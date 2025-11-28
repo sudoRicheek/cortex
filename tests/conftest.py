@@ -77,10 +77,26 @@ class DiscoveryDaemonFixture:
     def stop(self) -> None:
         """Stop the discovery daemon."""
         if self._daemon:
-            with contextlib.suppress(Exception):
-                self._daemon.stop()
+            # Signal shutdown first
+            self._daemon._running = False
+            self._daemon._shutdown_event.set()
+
+            # Close socket with linger=0 to avoid blocking
+            if self._daemon._socket:
+                with contextlib.suppress(Exception):
+                    self._daemon._socket.setsockopt(zmq.LINGER, 0)
+                    self._daemon._socket.close()
+                self._daemon._socket = None
+
+            # Terminate context
+            if self._daemon._context:
+                with contextlib.suppress(Exception):
+                    self._daemon._context.term()
+                self._daemon._context = None
+
         if self._thread:
             self._thread.join(timeout=1.0)
+
         self._daemon = None
         self._thread = None
 
