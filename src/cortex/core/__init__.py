@@ -7,12 +7,14 @@ from cortex.core.executor import (
 )
 from cortex.core.node import Node
 from cortex.core.publisher import Publisher
-from cortex.core.subscriber import MessageCallback, Subscriber
+from cortex.core.subscriber import Subscriber
+from cortex.core.types import AsyncCallback, MessageCallback
 
 __all__ = [
     "Node",
     "Publisher",
     "Subscriber",
+    "AsyncCallback",
     "MessageCallback",
     "BaseExecutor",
     "AsyncExecutor",

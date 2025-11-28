@@ -3,6 +3,8 @@ Publisher implementation for Cortex.
 
 Provides a ZeroMQ-based publisher that registers with the discovery daemon
 and publishes messages on IPC sockets using asyncio.
+
+Note: Publishers are always created through Node.create_publisher().
 """
 
 import contextlib
@@ -47,13 +49,13 @@ class Publisher:
     Uses ZeroMQ PUB socket over IPC for efficient local communication.
     Automatically registers with the discovery daemon.
 
+    Note: Always create publishers through Node.create_publisher().
+
     Example:
-        pub = Publisher(
-            topic_name="/camera/image",
-            message_type=ImageMessage,
-            node_name="camera_node"
-        )
-        pub.publish(ImageMessage(data=image_array))
+        async with Node("camera_node") as node:
+            pub = node.create_publisher("/camera/image", ImageMessage)
+            pub.publish(ImageMessage(data=image_array))
+            await node.run()
     """
 
     def __init__(
@@ -76,7 +78,7 @@ class Publisher:
             discovery_address: Address of the discovery daemon
             queue_size: High-water mark for outgoing messages
             auto_register: Whether to automatically register with discovery daemon
-            context: Optional shared ZMQ async context
+            context: Shared ZMQ async context from Node
         """
         self.topic_name = topic_name
         self.message_type = message_type
@@ -87,9 +89,8 @@ class Publisher:
         # Generate IPC address for this topic
         self.address = generate_ipc_address(topic_name)
 
-        # ZMQ setup - use provided context or create new one
+        # ZMQ setup - context provided by Node
         self._context: zmq.asyncio.Context = context or zmq.asyncio.Context()
-        self._owns_context = context is None
         self._socket: zmq.asyncio.Socket | None = None
 
         # Discovery client
@@ -107,14 +108,12 @@ class Publisher:
 
     def _setup_socket(self) -> None:
         """Set up the ZMQ publisher socket."""
-        # Ensure the IPC directory exists
-        if self.address.startswith("ipc://"):
-            path = self.address[6:]
-            dir_path = os.path.dirname(path)
-            os.makedirs(dir_path, exist_ok=True)
-            # Remove stale socket file
-            if os.path.exists(path):
-                os.remove(path)
+        # Ensure the IPC directory exists and remove stale socket file
+        path = self.address[6:]  # Remove "ipc://" prefix
+        dir_path = os.path.dirname(path)
+        os.makedirs(dir_path, exist_ok=True)
+        if os.path.exists(path):
+            os.remove(path)
 
         self._socket = self._context.socket(zmq.PUB)
 
@@ -222,20 +221,11 @@ class Publisher:
             self._socket.close()
             self._socket = None
 
-        # Only terminate context if we own it
-        if self._owns_context and self._context:
-            self._context.term()
-            self._context = None
-
         # Clean up IPC socket file
-        if self.address.startswith("ipc://"):
-            path = self.address[6:]
-            if os.path.exists(path):
-                with contextlib.suppress(Exception):
-                    os.remove(path)
-
-    def __enter__(self) -> "Publisher":
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.close()
+        assert self.address.startswith("ipc://"), (
+            "CRITICAL: ADDRESS ALWAYS STARTS WITH ipc:// -- UNLESS MANUALLY CHANGED"
+        )
+        path = self.address[6:]  # Remove "ipc://" prefix
+        if os.path.exists(path):
+            with contextlib.suppress(Exception):
+                os.remove(path)

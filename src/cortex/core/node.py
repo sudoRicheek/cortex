@@ -7,24 +7,18 @@ Uses asyncio for cooperative multitasking - ideal for Python < 3.14.
 
 import asyncio
 import logging
-from collections.abc import Callable, Coroutine
-from typing import Any
 
 import zmq
 import zmq.asyncio
 
-from cortex.core.executor import AsyncExecutor, RateExecutor
+from cortex.core.executor import RateExecutor
 from cortex.core.publisher import Publisher
 from cortex.core.subscriber import Subscriber
+from cortex.core.types import AsyncCallback, MessageCallback
 from cortex.discovery.daemon import DEFAULT_DISCOVERY_ADDRESS
 from cortex.messages.base import Message
 
 logger = logging.getLogger("cortex.node")
-
-
-# Type aliases
-AsyncCallback = Callable[..., Coroutine[Any, Any, None]]
-MessageCallback = Callable[[Message, Any], Coroutine[Any, Any, None]]
 
 
 class Node:
@@ -77,10 +71,10 @@ class Node:
         self._subscribers: dict[str, Subscriber] = {}
 
         # Timer executors: (period, callback, RateExecutor)
-        self._timers: list[tuple[float, AsyncCallback, Any]] = []
+        self._timers: list[tuple[float, AsyncCallback, RateExecutor]] = []
 
-        # Async executors (non-rate-limited)
-        self._async_executors: list[Any] = []
+        # Subscribers with callbacks (need to run receive loops)
+        self._active_subscribers: list[Subscriber] = []
 
         # Tasks
         self._tasks: list[asyncio.Task] = []
@@ -167,9 +161,9 @@ class Node:
         self._subscribers[topic_name] = sub
         logger.info(f"Created subscriber for {topic_name}")
 
-        # Add subscriber's receive loop as an async executor
+        # Add subscriber to active list if it has a callback
         if callback is not None:
-            self._async_executors.append(sub)
+            self._active_subscribers.append(sub)
 
         return sub
 
@@ -191,18 +185,6 @@ class Node:
 
         logger.debug(f"Created timer with period {period}s ({rate_hz} Hz)")
 
-    def create_async_executor(self, callback: AsyncCallback) -> None:
-        """
-        Create an async executor that runs as fast as possible.
-
-        Args:
-            callback: Async function to execute continuously
-        """
-        executor = AsyncExecutor(callback)
-        self._async_executors.append(executor)
-
-        logger.debug("Created async executor")
-
     async def run(self) -> None:
         """
         Run the node, processing messages and timers.
@@ -213,15 +195,11 @@ class Node:
 
         # Start all timer executors
         for _period, _callback, executor in self._timers:
-            executor.start()
             self._tasks.append(asyncio.create_task(executor.run()))
 
-        # Start all async executors (including subscriber receive loops)
-        for executor in self._async_executors:
-            if hasattr(executor, "start"):
-                executor.start()
-            if hasattr(executor, "run"):
-                self._tasks.append(asyncio.create_task(executor.run()))
+        # Start all subscriber receive loops
+        for sub in self._active_subscribers:
+            self._tasks.append(asyncio.create_task(sub.run()))
 
         logger.info(f"Node {self.name} running with {len(self._tasks)} tasks")
 
@@ -234,9 +212,8 @@ class Node:
             # Stop all executors
             for _period, _callback, executor in self._timers:
                 executor.stop()
-            for executor in self._async_executors:
-                if hasattr(executor, "stop"):
-                    executor.stop()
+            for sub in self._active_subscribers:
+                sub.stop()
 
     def stop(self) -> None:
         """Stop the node."""
@@ -246,9 +223,8 @@ class Node:
         # Stop all executors
         for _period, _callback, executor in self._timers:
             executor.stop()
-        for executor in self._async_executors:
-            if hasattr(executor, "stop"):
-                executor.stop()
+        for sub in self._active_subscribers:
+            sub.stop()
 
         # Cancel all tasks
         for task in self._tasks:
@@ -277,7 +253,7 @@ class Node:
         self._subscribers.clear()
 
         self._timers.clear()
-        self._async_executors.clear()
+        self._active_subscribers.clear()
 
         # Terminate ZMQ context
         self._context.term()

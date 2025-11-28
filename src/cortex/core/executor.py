@@ -9,14 +9,10 @@ import asyncio
 import logging
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Coroutine
-from typing import Any
+
+from cortex.core.types import AsyncCallback
 
 logger = logging.getLogger("cortex.executor")
-
-
-# Type alias for async callbacks
-AsyncCallback = Callable[..., Coroutine[Any, Any, None]]
 
 
 class BaseExecutor(ABC):

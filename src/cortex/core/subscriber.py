@@ -3,28 +3,26 @@ Subscriber implementation for Cortex.
 
 Provides a ZeroMQ-based subscriber that queries the discovery daemon
 and subscribes to topics using IPC sockets with asyncio.
+
+Note: Subscribers are always created through Node.create_subscriber().
 """
 
 import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Callable, Coroutine
-from typing import Any
 
 import zmq
 import zmq.asyncio
 
+from cortex.core.executor import AsyncExecutor
+from cortex.core.types import MessageCallback
 from cortex.discovery.client import DiscoveryClient
 from cortex.discovery.daemon import DEFAULT_DISCOVERY_ADDRESS
 from cortex.discovery.protocol import TopicInfo
 from cortex.messages.base import Message, MessageHeader
 
 logger = logging.getLogger("cortex.subscriber")
-
-
-# Type for async message callback
-MessageCallback = Callable[[Message, MessageHeader], Coroutine[Any, Any, None]]
 
 
 class Subscriber:
@@ -34,17 +32,12 @@ class Subscriber:
     Uses ZeroMQ SUB socket over IPC for efficient local communication.
     Automatically discovers the topic using the discovery daemon.
 
+    Note: Always create subscribers through Node.create_subscriber().
+
     Example:
         async def callback(msg, header):
-            print(f"Received image at {header.timestamp_ns}")
+            print(f"Received: {msg}")
 
-        sub = Subscriber(
-            topic_name="/camera/image",
-            message_type=ImageMessage,
-            callback=callback
-        )
-
-        # Run as part of node
         async with Node("my_node") as node:
             node.create_subscriber("/topic", MyMsg, callback)
             await node.run()
@@ -76,7 +69,7 @@ class Subscriber:
             auto_connect: Whether to automatically connect on creation
             wait_for_topic: Whether to wait for topic to be available
             topic_timeout: Timeout for waiting for topic (seconds)
-            context: Optional shared ZMQ async context
+            context: Shared ZMQ async context from Node
         """
         self.topic_name = topic_name
         self.message_type = message_type
@@ -90,9 +83,8 @@ class Subscriber:
         self._topic_info: TopicInfo | None = None
         self._connected = False
 
-        # ZMQ setup - use provided context or create new one
+        # ZMQ setup - context provided by Node
         self._context: zmq.asyncio.Context = context or zmq.asyncio.Context()
-        self._owns_context = context is None
         self._socket: zmq.asyncio.Socket | None = None
 
         # Discovery client
@@ -102,8 +94,8 @@ class Subscriber:
         self._receive_count = 0
         self._last_receive_time: float | None = None
 
-        # State
-        self._running = False
+        # Executor for receive loop
+        self._executor: AsyncExecutor | None = None
 
         # Initialize
         if auto_connect:
@@ -207,45 +199,43 @@ class Subscriber:
             logger.error(f"Failed to receive message: {e}")
             return None
 
+    async def _receive_and_callback(self) -> None:
+        """Receive a message and invoke the callback."""
+        result = await self.receive()
+        if result:
+            message, header = result
+            await self._callback(message, header)
+
     def start(self) -> None:
         """Start the subscriber receive loop."""
-        self._running = True
+        if self._executor:
+            self._executor.start()
 
     def stop(self) -> None:
         """Stop the subscriber receive loop."""
-        self._running = False
+        if self._executor:
+            self._executor.stop()
+
+    @property
+    def running(self) -> bool:
+        """Check if the subscriber is running."""
+        return self._executor.running if self._executor else False
 
     async def run(self) -> None:
         """
         Run the subscriber's async receive loop.
 
         Continuously receives messages and calls the callback.
+        Uses AsyncExecutor for consistent execution pattern.
         """
         if self._callback is None:
             logger.warning(f"No callback set for subscriber {self.topic_name}")
             return
 
-        self._running = True
         logger.info(f"Subscriber for {self.topic_name} running")
 
-        while self._running:
-            try:
-                result = await self.receive()
-
-                if result:
-                    message, header = result
-                    try:
-                        await self._callback(message, header)
-                    except Exception as e:
-                        logger.error(f"Error in callback: {e}")
-
-                await asyncio.sleep(0)  # Yield to event loop
-
-            except asyncio.CancelledError:
-                break
-            except Exception as e:
-                logger.error(f"Error in receive loop: {e}")
-                await asyncio.sleep(0.001)
+        self._executor = AsyncExecutor(self._receive_and_callback)
+        await self._executor.run()
 
         logger.info(f"Subscriber for {self.topic_name} stopped")
 
@@ -270,10 +260,13 @@ class Subscriber:
         return self._last_receive_time
 
     def close(self) -> None:
-        """Close the subscriber."""
+        """Close the subscriber and release resources."""
         logger.info(f"Closing subscriber for {self.topic_name}")
 
-        self._running = False
+        # Stop the executor
+        if self._executor:
+            self._executor.stop()
+            self._executor = None
 
         # Close discovery client (best effort - daemon may be gone)
         if self._discovery_client:
@@ -287,16 +280,4 @@ class Subscriber:
                 self._socket.close()
             self._socket = None
 
-        # Only terminate context if we own it
-        if self._owns_context and self._context:
-            with contextlib.suppress(Exception):
-                self._context.term()
-            self._context = None
-
         self._connected = False
-
-    def __enter__(self) -> "Subscriber":
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
-        self.close()
