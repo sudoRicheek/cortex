@@ -5,8 +5,6 @@ Throughput benchmark for Cortex framework.
 Measures maximum message throughput for different payload sizes.
 """
 
-from __future__ import annotations
-
 import asyncio
 import builtins
 import contextlib

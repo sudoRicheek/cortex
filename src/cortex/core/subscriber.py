@@ -5,14 +5,12 @@ Provides a ZeroMQ-based subscriber that queries the discovery daemon
 and subscribes to topics using IPC sockets with asyncio.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import logging
 import time
-from collections.abc import Coroutine
-from typing import Any, Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import zmq
 import zmq.asyncio
@@ -297,7 +295,7 @@ class Subscriber:
 
         self._connected = False
 
-    def __enter__(self) -> Subscriber:
+    def __enter__(self) -> "Subscriber":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

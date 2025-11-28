@@ -9,7 +9,7 @@ This framework provides:
 - Asyncio-based architecture for cooperative multitasking
 """
 
-from cortex.core.executor import MultiRateExecutor, RateExecutor
+from cortex.core.executor import AsyncExecutor, RateExecutor
 from cortex.core.node import Node
 from cortex.core.publisher import Publisher
 from cortex.core.subscriber import Subscriber
@@ -28,8 +28,8 @@ __all__ = [
     "Node",
     "Publisher",
     "Subscriber",
+    "AsyncExecutor",
     "RateExecutor",
-    "MultiRateExecutor",
     "Message",
     "MessageType",
     "ArrayMessage",

@@ -5,22 +5,17 @@ Provides an async interface for managing publishers and subscribers.
 Uses asyncio for cooperative multitasking - ideal for Python < 3.14.
 """
 
-from __future__ import annotations
-
 import asyncio
 import logging
-from collections.abc import Coroutine
-from typing import TYPE_CHECKING, Any, Callable
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 import zmq
 import zmq.asyncio
 
-from cortex.discovery.daemon import DEFAULT_DISCOVERY_ADDRESS
-from cortex.messages.base import Message
-
-if TYPE_CHECKING:
-    from cortex.core.publisher import Publisher
-    from cortex.core.subscriber import Subscriber
+from cortex.core import AsyncExecutor, Publisher, RateExecutor, Subscriber
+from cortex.discovery import DEFAULT_DISCOVERY_ADDRESS
+from cortex.messages import Message
 
 logger = logging.getLogger("cortex.node")
 
@@ -35,8 +30,7 @@ class Node:
     A node in the Cortex communication graph.
 
     Nodes manage a collection of publishers and subscribers using asyncio
-    for cooperative multitasking. This design is faithful to Python < 3.14's
-    single-threaded nature for CPU-bound work.
+    for cooperative multitasking.
 
     Example:
         class CameraNode(Node):
@@ -111,8 +105,6 @@ class Node:
         Returns:
             Publisher instance
         """
-        from cortex.core.publisher import Publisher
-
         if topic_name in self._publishers:
             logger.warning(f"Publisher for {topic_name} already exists")
             return self._publishers[topic_name]
@@ -154,8 +146,6 @@ class Node:
         Returns:
             Subscriber instance
         """
-        from cortex.core.subscriber import Subscriber
-
         if topic_name in self._subscribers:
             logger.warning(f"Subscriber for {topic_name} already exists")
             return self._subscribers[topic_name]
@@ -193,8 +183,6 @@ class Node:
             period: Timer period in seconds
             callback: Async function to call on each timer tick
         """
-        from cortex.core.executor import RateExecutor
-
         rate_hz = 1.0 / period
         executor = RateExecutor(callback, rate_hz=rate_hz)
         self._timers.append((period, callback, executor))
@@ -208,9 +196,7 @@ class Node:
         Args:
             callback: Async function to execute continuously
         """
-        from cortex.core.executor import RateExecutor
-
-        executor = RateExecutor(callback, rate_hz=None)
+        executor = AsyncExecutor(callback)
         self._async_executors.append(executor)
 
         logger.debug("Created async executor")
@@ -319,7 +305,7 @@ class Node:
         """Check if the node is running."""
         return self._running
 
-    async def __aenter__(self) -> Node:
+    async def __aenter__(self) -> "Node":
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:

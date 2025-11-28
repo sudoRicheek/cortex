@@ -15,7 +15,6 @@ import signal
 import sys
 import threading
 import time
-from typing import Optional
 
 import zmq
 
@@ -68,8 +67,8 @@ class DiscoveryDaemon:
         self._heartbeats: dict[str, float] = {}
 
         # ZMQ context and socket
-        self._context: Optional[zmq.Context] = None
-        self._socket: Optional[zmq.Socket] = None
+        self._context: zmq.Context | None = None
+        self._socket: zmq.Socket | None = None
 
         # Control flags
         self._running = False

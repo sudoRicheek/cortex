@@ -16,8 +16,6 @@ Usage:
     python examples/multi_node_system.py
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import time

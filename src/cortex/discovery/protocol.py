@@ -6,7 +6,6 @@ Defines the request/response messages for the discovery service.
 
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import Optional
 
 import msgpack
 
@@ -64,8 +63,8 @@ class DiscoveryRequest:
     """Request message for the discovery service."""
 
     command: DiscoveryCommand
-    topic_info: Optional[TopicInfo] = None  # For REGISTER/UNREGISTER
-    topic_name: Optional[str] = None  # For LOOKUP
+    topic_info: TopicInfo | None = None  # For REGISTER/UNREGISTER
+    topic_name: str | None = None  # For LOOKUP
 
     def to_bytes(self) -> bytes:
         """Serialize request to bytes."""
@@ -97,8 +96,8 @@ class DiscoveryResponse:
 
     status: DiscoveryStatus
     message: str = ""
-    topic_info: Optional[TopicInfo] = None  # For LOOKUP
-    topics: Optional[list[TopicInfo]] = None  # For LIST_TOPICS
+    topic_info: TopicInfo | None = None  # For LOOKUP
+    topics: list[TopicInfo] | None = None  # For LIST_TOPICS
 
     def to_bytes(self) -> bytes:
         """Serialize response to bytes."""

@@ -5,8 +5,6 @@ Provides a client interface to interact with the discovery daemon.
 Uses synchronous ZMQ since discovery is typically done once at startup.
 """
 
-from __future__ import annotations
-
 import contextlib
 import logging
 import threading
@@ -278,7 +276,7 @@ class DiscoveryClient:
                 self._context.term()
             self._context = None
 
-    def __enter__(self) -> DiscoveryClient:
+    def __enter__(self) -> "DiscoveryClient":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

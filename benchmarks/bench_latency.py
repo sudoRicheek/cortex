@@ -5,8 +5,6 @@ Latency benchmark for Cortex.
 Measures round-trip latency between publisher and subscriber.
 """
 
-from __future__ import annotations
-
 import argparse
 import asyncio
 import multiprocessing as mp

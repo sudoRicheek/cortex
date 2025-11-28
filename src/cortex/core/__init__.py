@@ -1,7 +1,8 @@
 """Core module for Cortex framework."""
 
 from cortex.core.executor import (
-    MultiRateExecutor,
+    AsyncExecutor,
+    BaseExecutor,
     RateExecutor,
 )
 from cortex.core.node import Node
@@ -13,6 +14,7 @@ __all__ = [
     "Publisher",
     "Subscriber",
     "MessageCallback",
+    "BaseExecutor",
+    "AsyncExecutor",
     "RateExecutor",
-    "MultiRateExecutor",
 ]

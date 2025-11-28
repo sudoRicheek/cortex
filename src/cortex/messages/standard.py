@@ -6,7 +6,7 @@ torch tensors, and Python dictionaries.
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -159,9 +159,9 @@ class PointCloudMessage(Message):
     """
 
     points: np.ndarray  # Nx3 array of XYZ coordinates
-    colors: Optional[np.ndarray] = None  # Nx3 array of RGB colors (0-255)
-    intensity: Optional[np.ndarray] = None  # Nx1 array of intensity values
-    normals: Optional[np.ndarray] = None  # Nx3 array of normal vectors
+    colors: np.ndarray | None = None  # Nx3 array of RGB colors (0-255)
+    intensity: np.ndarray | None = None  # Nx1 array of intensity values
+    normals: np.ndarray | None = None  # Nx3 array of normal vectors
     frame_id: str = ""
 
 

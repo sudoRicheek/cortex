@@ -16,8 +16,6 @@ Usage:
     python examples/subscriber_dict.py
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import time
@@ -86,7 +84,9 @@ class DictPublisherNode(Node):
 
         if self._count % 5 == 0:
             pos = state["pose"]["position"]
-            print(f"Published state {self._count}: pos=({pos['x']:.2f}, {pos['y']:.2f})")
+            print(
+                f"Published state {self._count}: pos=({pos['x']:.2f}, {pos['y']:.2f})"
+            )
 
         self._count += 1
 

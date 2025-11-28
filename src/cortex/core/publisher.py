@@ -5,8 +5,6 @@ Provides a ZeroMQ-based publisher that registers with the discovery daemon
 and publishes messages on IPC sockets using asyncio.
 """
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import logging
@@ -236,7 +234,7 @@ class Publisher:
                 with contextlib.suppress(Exception):
                     os.remove(path)
 
-    def __enter__(self) -> Publisher:
+    def __enter__(self) -> "Publisher":
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:
