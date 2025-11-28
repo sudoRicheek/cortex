@@ -65,7 +65,7 @@ class DiscoveryDaemonFixture:
         def run_daemon():
             self._started.set()
             with contextlib.suppress(Exception):
-                self._daemon.start()  # Daemon was stopped
+                self._daemon.start()  # start() calls stop() in finally block
 
         self._thread = threading.Thread(target=run_daemon, daemon=True)
         self._thread.start()
@@ -77,26 +77,15 @@ class DiscoveryDaemonFixture:
     def stop(self) -> None:
         """Stop the discovery daemon."""
         if self._daemon:
-            # Signal shutdown first
+            # Signal shutdown - daemon's start() will call stop() which
+            # closes socket and terminates context in the same thread
             self._daemon._running = False
             self._daemon._shutdown_event.set()
 
-            # Close socket (LINGER is already set on creation)
-            if self._daemon._socket:
-                with contextlib.suppress(Exception):
-                    self._daemon._socket.close()
-                self._daemon._socket = None
-
-        # Wait for thread to finish
+        # Wait for thread to finish (daemon cleans up its own context)
         if self._thread:
             self._thread.join(timeout=2.0)
             self._thread = None
-
-        # Terminate context
-        if self._daemon and self._daemon._context:
-            with contextlib.suppress(Exception):
-                self._daemon._context.term()
-            self._daemon._context = None
 
         self._daemon = None
 

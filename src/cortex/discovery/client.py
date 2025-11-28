@@ -66,8 +66,7 @@ class DiscoveryClient:
             self._socket = self._context.socket(zmq.REQ)
             self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
             self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
-            # Set LINGER to half of timeout to allow graceful shutdown
-            self._socket.setsockopt(zmq.LINGER, self.timeout_ms // 2)
+            self._socket.setsockopt(zmq.LINGER, 0)  # Immediate shutdown
             self._socket.connect(self.discovery_address)
 
     def _reset_connection(self) -> None:

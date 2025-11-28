@@ -119,8 +119,9 @@ class Publisher:
 
         # Set high-water mark (queue size)
         self._socket.setsockopt(zmq.SNDHWM, self.queue_size)
-        # Set linger for graceful shutdown
-        self._socket.setsockopt(zmq.LINGER, 1000)
+
+        # Set linger to 0 for immediate shutdown (close all sockets before context.term)
+        self._socket.setsockopt(zmq.LINGER, 0)
 
         # Bind to the address
         self._socket.bind(self.address)

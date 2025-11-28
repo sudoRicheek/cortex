@@ -155,8 +155,9 @@ class Subscriber:
 
         # Set high-water mark
         self._socket.setsockopt(zmq.RCVHWM, self.queue_size)
-        # Set linger for graceful shutdown
-        self._socket.setsockopt(zmq.LINGER, 1000)
+
+        # Set linger to 0 for immediate shutdown
+        self._socket.setsockopt(zmq.LINGER, 0)
 
         # Subscribe to topic
         self._socket.setsockopt_string(zmq.SUBSCRIBE, self.topic_name)
