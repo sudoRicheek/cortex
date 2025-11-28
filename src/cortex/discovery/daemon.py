@@ -97,6 +97,9 @@ class DiscoveryDaemon:
 
         # Set socket options for responsiveness
         self._socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
+        self._socket.setsockopt(
+            zmq.LINGER, 500
+        )  # Half of RCVTIMEO for graceful shutdown
 
         self._running = True
         self._shutdown_event.clear()
@@ -307,7 +310,6 @@ class DiscoveryDaemon:
 
         if self._socket:
             try:
-                self._socket.setsockopt(zmq.LINGER, 0)
                 self._socket.close()
             except Exception as e:
                 logger.debug(f"Error closing socket: {e}")

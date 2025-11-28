@@ -66,14 +66,14 @@ class DiscoveryClient:
             self._socket = self._context.socket(zmq.REQ)
             self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
             self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
-            self._socket.setsockopt(zmq.LINGER, 0)
+            # Set LINGER to half of timeout to allow graceful shutdown
+            self._socket.setsockopt(zmq.LINGER, self.timeout_ms // 2)
             self._socket.connect(self.discovery_address)
 
     def _reset_connection(self) -> None:
         """Reset the connection by closing socket. Next request will reconnect."""
         if self._socket:
             with contextlib.suppress(Exception):
-                self._socket.setsockopt(zmq.LINGER, 0)
                 self._socket.close()
             self._socket = None
         self._context = None
@@ -274,12 +274,13 @@ class DiscoveryClient:
 
         if self._socket:
             with contextlib.suppress(Exception):
-                self._socket.setsockopt(zmq.LINGER, 0)
                 self._socket.close()
             self._socket = None
 
-        # Don't call context.term() - it can crash in cross-thread scenarios
-        self._context = None
+        if self._context:
+            with contextlib.suppress(Exception):
+                self._context.term()
+            self._context = None
 
     def __enter__(self) -> "DiscoveryClient":
         return self

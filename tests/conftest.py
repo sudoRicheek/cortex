@@ -81,10 +81,9 @@ class DiscoveryDaemonFixture:
             self._daemon._running = False
             self._daemon._shutdown_event.set()
 
-            # Close socket with linger=0 to avoid blocking
+            # Close socket (LINGER is already set on creation)
             if self._daemon._socket:
                 with contextlib.suppress(Exception):
-                    self._daemon._socket.setsockopt(zmq.LINGER, 0)
                     self._daemon._socket.close()
                 self._daemon._socket = None
 
@@ -93,11 +92,10 @@ class DiscoveryDaemonFixture:
             self._thread.join(timeout=2.0)
             self._thread = None
 
-        # Don't explicitly terminate the ZMQ context - it causes crashes when
-        # called from a different thread than where it was created.
-        # Let Python's garbage collector handle context cleanup.
-        # The socket is already closed with linger=0, so no messages will block.
-        if self._daemon:
+        # Terminate context
+        if self._daemon and self._daemon._context:
+            with contextlib.suppress(Exception):
+                self._daemon._context.term()
             self._daemon._context = None
 
         self._daemon = None
