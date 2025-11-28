@@ -69,10 +69,14 @@ class DiscoveryClient:
             self._socket.setsockopt(zmq.LINGER, 0)
             self._socket.connect(self.discovery_address)
 
-    def _reconnect(self) -> None:
-        """Reconnect to the discovery daemon."""
-        self.close()
-        self._ensure_connected()
+    def _reset_connection(self) -> None:
+        """Reset the connection by closing socket. Next request will reconnect."""
+        if self._socket:
+            with contextlib.suppress(Exception):
+                self._socket.setsockopt(zmq.LINGER, 0)
+                self._socket.close()
+            self._socket = None
+        self._context = None
 
     def _send_request(self, request: DiscoveryRequest) -> DiscoveryResponse:
         """Send a request and wait for response with retries."""
@@ -90,11 +94,11 @@ class DiscoveryClient:
                     f"Discovery request timed out after {self.timeout_ms}ms"
                 )
                 logger.warning(f"Request timeout, attempt {attempt + 1}/{self.retries}")
-                self._reconnect()
+                self._reset_connection()
             except zmq.ZMQError as e:
                 last_error = e
                 logger.warning(f"ZMQ error: {e}, attempt {attempt + 1}/{self.retries}")
-                self._reconnect()
+                self._reset_connection()
 
         raise last_error
 
@@ -245,6 +249,8 @@ class DiscoveryClient:
         """Background thread that sends heartbeats for registered topics."""
         while self._heartbeat_running and self._heartbeat_topics:
             for topic_name in list(self._heartbeat_topics.keys()):
+                if not self._heartbeat_running:
+                    break
                 if topic_name in self._heartbeat_topics:
                     self._send_heartbeat(topic_name)
 
@@ -268,13 +274,12 @@ class DiscoveryClient:
 
         if self._socket:
             with contextlib.suppress(Exception):
+                self._socket.setsockopt(zmq.LINGER, 0)
                 self._socket.close()
             self._socket = None
 
-        if self._context:
-            with contextlib.suppress(Exception):
-                self._context.term()
-            self._context = None
+        # Don't call context.term() - it can crash in cross-thread scenarios
+        self._context = None
 
     def __enter__(self) -> "DiscoveryClient":
         return self
