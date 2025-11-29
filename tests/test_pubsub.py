@@ -60,7 +60,10 @@ class TestPublisher:
 
         pub.close()
 
-    def test_publisher_publishes_messages(self, discovery_daemon, discovery_address):
+    @pytest.mark.asyncio
+    async def test_publisher_publishes_messages(
+        self, discovery_daemon, discovery_address
+    ):
         """Publisher should publish messages."""
         pub = Publisher(
             topic_name="/test/publish",
@@ -70,14 +73,15 @@ class TestPublisher:
         )
 
         msg = SampleMessage(value=42, name="test")
-        success = pub.publish(msg)
+        success = await pub.publish(msg)
 
         assert success
         assert pub.publish_count == 1
 
         pub.close()
 
-    def test_publisher_type_checking(self, discovery_daemon, discovery_address):
+    @pytest.mark.asyncio
+    async def test_publisher_type_checking(self, discovery_daemon, discovery_address):
         """Publisher should reject wrong message types."""
         pub = Publisher(
             topic_name="/test/typecheck",
@@ -89,7 +93,7 @@ class TestPublisher:
         wrong_msg = StringMessage(data="wrong type")
 
         with pytest.raises(TypeError):
-            pub.publish(wrong_msg)
+            await pub.publish(wrong_msg)
 
         pub.close()
 
@@ -164,7 +168,7 @@ class TestSubscriber:
         run_task = asyncio.create_task(sub.run())
 
         # Publish message
-        pub.publish(SampleMessage(value=42, name="test"))
+        await pub.publish(SampleMessage(value=42, name="test"))
 
         # Wait for message to be received
         with contextlib.suppress(asyncio.TimeoutError):
@@ -263,7 +267,7 @@ class TestPubSubIntegration:
 
         # Publish multiple messages
         for i in range(10):
-            pub.publish(SampleMessage(value=i, name=f"msg_{i}"))
+            await pub.publish(SampleMessage(value=i, name=f"msg_{i}"))
 
         # Wait for all messages
         with contextlib.suppress(asyncio.TimeoutError):
@@ -313,7 +317,7 @@ class TestPubSubIntegration:
 
         # Send large array
         arr = np.random.randn(100, 100).astype(np.float32)
-        pub.publish(ArrayMessage(data=arr))
+        await pub.publish(ArrayMessage(data=arr))
 
         # Wait for message
         with contextlib.suppress(asyncio.TimeoutError):
@@ -368,7 +372,7 @@ class TestPubSubIntegration:
             "nested": {"a": 1, "b": 2},
             "array": np.array([1.0, 2.0, 3.0]),
         }
-        pub.publish(DictMessage(data=data))
+        await pub.publish(DictMessage(data=data))
 
         # Wait for message
         with contextlib.suppress(asyncio.TimeoutError):

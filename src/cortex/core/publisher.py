@@ -150,7 +150,7 @@ class Publisher:
         except Exception as e:
             logger.warning(f"Could not connect to discovery daemon: {e}")
 
-    def publish(self, message: Message, flags: int = zmq.NOBLOCK) -> bool:
+    async def publish(self, message: Message, flags: int = zmq.NOBLOCK) -> bool:
         """
         Publish a message (non-blocking).
 
@@ -174,7 +174,7 @@ class Publisher:
             data = message.to_bytes()
 
             # Send with topic name as first frame for filtering
-            self._socket.send_multipart(
+            await self._socket.send_multipart(
                 [self.topic_name.encode("utf-8"), data], flags=flags
             )
 

@@ -8,7 +8,6 @@ Uses synchronous ZMQ since discovery is typically done once at startup.
 import asyncio
 import contextlib
 import logging
-import threading
 import time
 
 import zmq
@@ -53,7 +52,6 @@ class DiscoveryClient:
 
         self._context: zmq.Context = zmq.Context()
         self._socket: zmq.Socket | None = None
-        self._lock = threading.Lock()
 
         # Connect immediately
         self._connect()
@@ -84,10 +82,9 @@ class DiscoveryClient:
 
         for attempt in range(self.retries):
             try:
-                with self._lock:
-                    self._socket.send(request.to_bytes())
-                    response_bytes = self._socket.recv()
-                    return DiscoveryResponse.from_bytes(response_bytes)
+                self._socket.send(request.to_bytes())
+                response_bytes = self._socket.recv()
+                return DiscoveryResponse.from_bytes(response_bytes)
             except zmq.Again:
                 # Timeout - need to reconnect because REQ socket is now stuck
                 last_error = TimeoutError(
