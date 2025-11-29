@@ -51,7 +51,7 @@ class DiscoveryClient:
         self.timeout_ms = timeout_ms
         self.retries = retries
 
-        self._context: zmq.Context | None = None
+        self._context: zmq.Context = zmq.Context()
         self._socket: zmq.Socket | None = None
         self._lock = threading.Lock()
 
@@ -60,45 +60,51 @@ class DiscoveryClient:
         self._heartbeat_thread: threading.Thread | None = None
         self._heartbeat_running = False
 
-    def _ensure_connected(self) -> None:
-        """Ensure we have a connection to the discovery daemon."""
-        if self._socket is None:
-            self._context = zmq.Context()
-            self._socket = self._context.socket(zmq.REQ)
-            self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
-            self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
-            self._socket.setsockopt(zmq.LINGER, 0)  # Immediate shutdown
-            self._socket.connect(self.discovery_address)
+        # Connect immediately
+        self._connect()
 
-    def _reset_connection(self) -> None:
-        """Reset the connection by closing socket. Next request will reconnect."""
+    def _connect(self) -> None:
+        """Create and connect the socket."""
+        self._socket = self._context.socket(zmq.REQ)
+        self._socket.setsockopt(zmq.RCVTIMEO, self.timeout_ms)
+        self._socket.setsockopt(zmq.SNDTIMEO, self.timeout_ms)
+        self._socket.setsockopt(zmq.LINGER, 0)  # Immediate shutdown
+        self._socket.connect(self.discovery_address)
+
+    def _reconnect(self) -> None:
+        """Reconnect by closing and recreating the socket.
+
+        This is needed because REQ sockets get stuck in a bad state
+        after a timeout (waiting for reply that will never come).
+        """
         if self._socket:
             with contextlib.suppress(Exception):
                 self._socket.close()
-            self._socket = None
-        self._context = None
+        self._connect()
 
     def _send_request(self, request: DiscoveryRequest) -> DiscoveryResponse:
-        """Send a request and wait for response with retries."""
-        last_error = None
+        """Send a request and wait for response."""
+
+        last_error: Exception | None = None
 
         for attempt in range(self.retries):
             try:
                 with self._lock:
-                    self._ensure_connected()
                     self._socket.send(request.to_bytes())
                     response_bytes = self._socket.recv()
                     return DiscoveryResponse.from_bytes(response_bytes)
             except zmq.Again:
+                # Timeout - need to reconnect because REQ socket is now stuck
                 last_error = TimeoutError(
                     f"Discovery request timed out after {self.timeout_ms}ms"
                 )
                 logger.warning(f"Request timeout, attempt {attempt + 1}/{self.retries}")
-                self._reset_connection()
+                self._reconnect()
             except zmq.ZMQError as e:
+                # ZMQ error - reconnect and re-raise
                 last_error = e
                 logger.warning(f"ZMQ error: {e}, attempt {attempt + 1}/{self.retries}")
-                self._reset_connection()
+                self._reconnect()
 
         raise last_error
 
@@ -179,6 +185,11 @@ class DiscoveryClient:
                 return response.topic_info
             else:
                 return None
+        except TimeoutError:
+            logger.error(
+                f"Lookup timeout for topic: {topic_name}. Probably Discovery Daemon is not running."
+            )
+            return None
         except Exception as e:
             logger.error(f"Failed to lookup topic: {e}")
             return None
@@ -306,10 +317,8 @@ class DiscoveryClient:
                 self._socket.close()
             self._socket = None
 
-        if self._context:
-            with contextlib.suppress(Exception):
-                self._context.term()
-            self._context = None
+        with contextlib.suppress(Exception):
+            self._context.term()
 
     def __enter__(self) -> "DiscoveryClient":
         return self

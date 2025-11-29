@@ -20,6 +20,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import cortex
 from cortex.core.publisher import Publisher
 from cortex.core.subscriber import Subscriber
 from cortex.discovery.daemon import DiscoveryDaemon
@@ -103,8 +104,15 @@ def run_subscriber(
             message_type=LatencyMessage,
             node_name="latency_subscriber",
             wait_for_topic=True,
-            topic_timeout=10.0,
+            topic_timeout=30.0,
         )
+
+        # Wait for topic to be available before signaling ready
+        if not sub.is_connected:
+            connected = await sub._async_connect()
+            if not connected:
+                results_queue.put({"received": 0, "latencies": [], "error": "timeout"})
+                return
 
         # Signal ready
         ready_event.set()
@@ -138,7 +146,7 @@ def run_subscriber(
             }
         )
 
-    asyncio.run(subscriber_main())
+    cortex.run(subscriber_main())
 
 
 def run_latency_benchmark(

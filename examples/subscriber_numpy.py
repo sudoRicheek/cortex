@@ -16,8 +16,7 @@ Usage:
     python examples/subscriber_numpy.py
 """
 
-import asyncio
-
+import cortex
 from cortex import ArrayMessage, Node
 from cortex.messages.base import MessageHeader
 
@@ -41,7 +40,7 @@ class ArraySubscriberNode(Node):
     def __init__(self):
         super().__init__(name="array_subscriber")
 
-        # Create a subscriber
+        # Create a subscriber - connection happens asynchronously in run()
         print("Waiting for publisher on /sensor/array_data...")
         self.sub = self.create_subscriber(
             topic_name="/sensor/array_data",
@@ -51,10 +50,7 @@ class ArraySubscriberNode(Node):
             topic_timeout=30.0,
         )
 
-        if not self.sub.is_connected:
-            raise RuntimeError("Failed to connect to topic!")
-
-        print("Connected! Receiving messages...")
+        print("Subscriber created, will connect when run() is called...")
         print("Press Ctrl+C to stop")
         print()
 
@@ -63,17 +59,15 @@ async def main():
     """Run the subscriber example."""
     print("Starting NumPy array subscriber...")
 
+    node = ArraySubscriberNode()
+
     try:
-        node = ArraySubscriberNode()
         await node.run()
-    except RuntimeError as e:
-        print(f"Error: {e}")
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
-        if "node" in locals():
-            await node.close()
+        await node.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cortex.run(main())

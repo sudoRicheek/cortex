@@ -7,10 +7,10 @@ name = "cortex"
 version = "0.1.0"
 description = "A lightweight framework using ZeroMQ for inter-process communication"
 readme = "README.md"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 requires-python = ">=3.10"
 authors = [
-    {name = "Cortex Authors"}
+    {name = "Richeek Das", email = "richeek@seas.upenn.edu"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -20,11 +20,14 @@ classifiers = [
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
     "pyzmq>=27.0.0",
     "numpy>=1.26.4",
     "msgpack>=1.0.0",
+    "uvloop>=0.19.0; sys_platform != 'win32'",
 ]
 
 [project.optional-dependencies]

@@ -16,14 +16,13 @@ Usage:
     python examples/subscriber_tensor.py
 """
 
-import asyncio
-
 try:
     import torch
 except ImportError:
     print("This example requires PyTorch. Install with: pip install torch")
     exit(1)
 
+import cortex
 from cortex import Node, TensorMessage
 from cortex.messages.base import MessageHeader
 
@@ -50,7 +49,7 @@ class TensorSubscriberNode(Node):
     def __init__(self):
         super().__init__(name="tensor_subscriber")
 
-        # Create a subscriber
+        # Create a subscriber - connection happens asynchronously in run()
         print("Waiting for publisher on /model/features...")
         self.sub = self.create_subscriber(
             topic_name="/model/features",
@@ -60,10 +59,7 @@ class TensorSubscriberNode(Node):
             topic_timeout=30.0,
         )
 
-        if not self.sub.is_connected:
-            raise RuntimeError("Failed to connect to topic!")
-
-        print("Connected! Receiving messages...")
+        print("Subscriber created, will connect when run() is called...")
         print("Press Ctrl+C to stop")
         print()
 
@@ -73,17 +69,15 @@ async def main():
     print("Starting PyTorch tensor subscriber...")
     print(f"PyTorch version: {torch.__version__}")
 
+    node = TensorSubscriberNode()
+
     try:
-        node = TensorSubscriberNode()
         await node.run()
-    except RuntimeError as e:
-        print(f"Error: {e}")
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
-        if "node" in locals():
-            await node.close()
+        await node.close()
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cortex.run(main())

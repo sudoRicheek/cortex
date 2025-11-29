@@ -16,14 +16,13 @@ Usage:
     python examples/subscriber_tensor.py
 """
 
-import asyncio
-
 try:
     import torch
 except ImportError:
     print("This example requires PyTorch. Install with: pip install torch")
     exit(1)
 
+import cortex
 from cortex import Node, TensorMessage
 
 
@@ -84,4 +83,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cortex.run(main())

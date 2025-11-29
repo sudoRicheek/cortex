@@ -22,6 +22,7 @@ import time
 
 import numpy as np
 
+import cortex
 from cortex import DictMessage, Node
 
 
@@ -108,4 +109,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(main())
+        cortex.run(main())

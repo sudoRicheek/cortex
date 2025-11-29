@@ -16,10 +16,9 @@ Usage:
     python examples/subscriber_numpy.py
 """
 
-import asyncio
-
 import numpy as np
 
+import cortex
 from cortex import ArrayMessage, Node
 
 
@@ -84,4 +83,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    cortex.run(main())

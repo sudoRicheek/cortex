@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+import cortex
 from cortex import Message, Node
 from cortex.messages.base import MessageHeader
 
@@ -236,4 +237,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(main())
+        cortex.run(main())

@@ -19,6 +19,7 @@ Usage:
 import asyncio
 import contextlib
 
+import cortex
 from cortex import DictMessage, Node
 from cortex.messages.base import MessageHeader
 
@@ -28,8 +29,9 @@ class DictSubscriberNode(Node):
 
     def __init__(self) -> None:
         super().__init__(name="dict_subscriber")
+        # Create a subscriber - connection happens asynchronously in run()
         print("Waiting for publisher on /robot/state...")
-        sub = self.create_subscriber(
+        self.create_subscriber(
             topic_name="/robot/state",
             message_type=DictMessage,
             callback=self._on_state_received,
@@ -37,10 +39,7 @@ class DictSubscriberNode(Node):
             topic_timeout=30.0,
         )
 
-        if not sub.is_connected:
-            raise RuntimeError("Failed to connect to topic!")
-
-        print("Connected! Receiving messages...")
+        print("Subscriber created, will connect when run() is called...")
         print("Press Ctrl+C to stop")
         print()
 
@@ -78,11 +77,7 @@ async def main() -> None:
     """Run the dictionary subscriber example."""
     print("Starting dictionary subscriber...")
 
-    try:
-        node = DictSubscriberNode()
-    except RuntimeError as e:
-        print(e)
-        return
+    node = DictSubscriberNode()
 
     try:
         await node.run()
@@ -95,4 +90,4 @@ async def main() -> None:
 
 if __name__ == "__main__":
     with contextlib.suppress(KeyboardInterrupt):
-        asyncio.run(main())
+        cortex.run(main())

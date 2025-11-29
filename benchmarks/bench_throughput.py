@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+import cortex
 from cortex import Publisher, Subscriber
 from cortex.discovery import DiscoveryDaemon
 from cortex.messages import ArrayMessage
@@ -121,7 +122,7 @@ def run_throughput_test(
                     except Exception:
                         break
 
-            asyncio.run(run_sub())
+            cortex.run(run_sub())
 
         sub_thread = threading.Thread(target=subscriber_loop, daemon=True)
         sub_thread.start()
