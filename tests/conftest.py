@@ -29,7 +29,7 @@ def temp_ipc_address(tmp_path) -> str:
 @pytest.fixture
 def discovery_address(tmp_path) -> str:
     """Provide a discovery daemon address."""
-    return f"ipc://{tmp_path}/cortex_discovery"
+    return f"ipc://{tmp_path}/cortex/discovery.sock"
 
 
 @pytest.fixture
