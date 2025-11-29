@@ -22,17 +22,17 @@ from cortex.messages.base import Message
 logger = logging.getLogger("cortex.publisher")
 
 
-def generate_ipc_address(topic_name: str) -> str:
+def generate_ipc_address(topic_name: str, node_name: str) -> str:
     """
-    Generate a unique IPC address for a topic.
+    Generate a unique IPC address for a topic and node.
 
     Uses a hash of the topic name to create a valid filesystem path.
     """
     # Create a safe filename from topic name
     safe_name = topic_name.replace("/", "_").lstrip("_")
 
-    # Add hash suffix for uniqueness
-    hash_suffix = hashlib.md5(topic_name.encode()).hexdigest()[:8]
+    # Add hash suffix for uniqueness (topic name + node name)
+    hash_suffix = hashlib.md5(f"{node_name}:{topic_name}".encode()).hexdigest()[:8]
 
     # Ensure the directory exists
     ipc_dir = "/tmp/cortex/topics"
@@ -65,7 +65,7 @@ class Publisher:
         discovery_address: str = DEFAULT_DISCOVERY_ADDRESS,
         queue_size: int = 10,
         auto_register: bool = True,
-        context: zmq.asyncio.Context | None = None,
+        context: zmq.asyncio.Context | zmq.Context | None = None,
     ):
         """
         Initialize the publisher.
@@ -77,7 +77,7 @@ class Publisher:
             discovery_address: Address of the discovery daemon
             queue_size: High-water mark for outgoing messages
             auto_register: Whether to automatically register with discovery daemon
-            context: Shared ZMQ async context from Node
+            context: Shared ZMQ async context or sync context (optional)
         """
         self.topic_name = topic_name
         self.message_type = message_type
@@ -86,11 +86,14 @@ class Publisher:
         self.queue_size = queue_size
 
         # Generate IPC address for this topic
-        self.address = generate_ipc_address(topic_name)
+        self.address = generate_ipc_address(topic_name, node_name)
 
         # ZMQ setup - context provided by Node
-        self._context: zmq.asyncio.Context = context or zmq.asyncio.Context()
-        self._socket: zmq.asyncio.Socket | None = None
+        # if context is async context, convert to sync context
+        self._context: zmq.asyncio.Context | zmq.Context = context or zmq.Context()
+        if isinstance(self._context, zmq.asyncio.Context):
+            self._context: zmq.Context = zmq.Context(self._context)
+        self._socket: zmq.Socket | None = None
 
         # Discovery client
         self._discovery_client: DiscoveryClient | None = None

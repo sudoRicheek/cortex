@@ -217,8 +217,6 @@ class Subscriber:
 
             return message, header
 
-        except zmq.Again:
-            return None
         except asyncio.CancelledError:
             raise
         except Exception as e:

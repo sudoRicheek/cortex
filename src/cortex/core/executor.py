@@ -86,7 +86,7 @@ class AsyncExecutor(BaseExecutor):
                 break
             except Exception as e:
                 logger.error(f"Error in AsyncExecutor: {e}")
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0)
 
 
 class RateExecutor(BaseExecutor):
@@ -141,11 +141,6 @@ class RateExecutor(BaseExecutor):
                 break
             except Exception as e:
                 logger.error(f"Error in RateExecutor: {e}")
-                await asyncio.sleep(0.001)
+                await asyncio.sleep(0)
 
-            # Sleep until next execution time (with small max to stay responsive)
-            sleep_time = min(
-                max(0, next_exec_time - time.perf_counter()),
-                0.001,  # Max sleep to stay responsive
-            )
-            await asyncio.sleep(sleep_time)
+            await asyncio.sleep(max(0, next_exec_time - time.perf_counter()))
