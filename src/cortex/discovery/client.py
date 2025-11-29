@@ -8,7 +8,6 @@ Uses synchronous ZMQ since discovery is typically done once at startup.
 import asyncio
 import contextlib
 import logging
-import threading
 import time
 
 import zmq
@@ -53,12 +52,6 @@ class DiscoveryClient:
 
         self._context: zmq.Context = zmq.Context()
         self._socket: zmq.Socket | None = None
-        self._lock = threading.Lock()
-
-        # Heartbeat thread for registered topics
-        self._heartbeat_topics: dict[str, bool] = {}
-        self._heartbeat_thread: threading.Thread | None = None
-        self._heartbeat_running = False
 
         # Connect immediately
         self._connect()
@@ -89,10 +82,9 @@ class DiscoveryClient:
 
         for attempt in range(self.retries):
             try:
-                with self._lock:
-                    self._socket.send(request.to_bytes())
-                    response_bytes = self._socket.recv()
-                    return DiscoveryResponse.from_bytes(response_bytes)
+                self._socket.send(request.to_bytes())
+                response_bytes = self._socket.recv()
+                return DiscoveryResponse.from_bytes(response_bytes)
             except zmq.Again:
                 # Timeout - need to reconnect because REQ socket is now stuck
                 last_error = TimeoutError(
@@ -125,8 +117,6 @@ class DiscoveryClient:
         try:
             response = self._send_request(request)
             if response.status == DiscoveryStatus.OK:
-                # Start heartbeat for this topic
-                self._start_heartbeat(topic_info.name)
                 logger.info(f"Registered topic: {topic_info.name}")
                 return True
             else:
@@ -146,9 +136,6 @@ class DiscoveryClient:
         Returns:
             True if unregistration was successful
         """
-        # Stop heartbeat for this topic
-        self._stop_heartbeat(topic_name)
-
         request = DiscoveryRequest(
             command=DiscoveryCommand.UNREGISTER_TOPIC, topic_name=topic_name
         )
@@ -270,48 +257,8 @@ class DiscoveryClient:
             logger.error(f"Failed to list topics: {e}")
             return []
 
-    def _start_heartbeat(self, topic_name: str) -> None:
-        """Start sending heartbeats for a topic."""
-        self._heartbeat_topics[topic_name] = True
-
-        if not self._heartbeat_running:
-            self._heartbeat_running = True
-            self._heartbeat_thread = threading.Thread(
-                target=self._heartbeat_loop, daemon=True
-            )
-            self._heartbeat_thread.start()
-
-    def _stop_heartbeat(self, topic_name: str) -> None:
-        """Stop sending heartbeats for a topic."""
-        self._heartbeat_topics.pop(topic_name, None)
-
-    def _heartbeat_loop(self) -> None:
-        """Background thread that sends heartbeats for registered topics."""
-        while self._heartbeat_running and self._heartbeat_topics:
-            for topic_name in list(self._heartbeat_topics.keys()):
-                if not self._heartbeat_running:
-                    break
-                if topic_name in self._heartbeat_topics:
-                    self._send_heartbeat(topic_name)
-
-            time.sleep(10.0)  # Heartbeat interval
-
-    def _send_heartbeat(self, topic_name: str) -> None:
-        """Send a heartbeat for a topic."""
-        request = DiscoveryRequest(
-            command=DiscoveryCommand.HEARTBEAT, topic_name=topic_name
-        )
-
-        try:
-            self._send_request(request)
-        except Exception as e:
-            logger.warning(f"Failed to send heartbeat for {topic_name}: {e}")
-
     def close(self) -> None:
         """Close the client connection."""
-        self._heartbeat_running = False
-        self._heartbeat_topics.clear()
-
         if self._socket:
             with contextlib.suppress(Exception):
                 self._socket.close()
