@@ -3,8 +3,6 @@ Publisher implementation for Cortex.
 
 Provides a ZeroMQ-based publisher that registers with the discovery daemon
 and publishes messages on IPC sockets using asyncio.
-
-Note: Publishers are always created through Node.create_publisher().
 """
 
 import contextlib
@@ -32,6 +30,7 @@ def generate_ipc_address(topic_name: str) -> str:
     """
     # Create a safe filename from topic name
     safe_name = topic_name.replace("/", "_").lstrip("_")
+
     # Add hash suffix for uniqueness
     hash_suffix = hashlib.md5(topic_name.encode()).hexdigest()[:8]
 
@@ -39,7 +38,7 @@ def generate_ipc_address(topic_name: str) -> str:
     ipc_dir = "/tmp/cortex/topics"
     os.makedirs(ipc_dir, exist_ok=True)
 
-    return f"ipc://{ipc_dir}/{safe_name}_{hash_suffix}"
+    return f"ipc://{ipc_dir}/{safe_name}_{hash_suffix}.sock"
 
 
 class Publisher:

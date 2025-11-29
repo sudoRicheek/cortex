@@ -4,7 +4,6 @@ Tests for publisher and subscriber.
 
 import asyncio
 import contextlib
-import threading
 import time
 from dataclasses import dataclass
 
@@ -184,12 +183,14 @@ class TestSubscriber:
         sub.close()
         pub.close()
 
-    def test_subscriber_waits_for_topic(self, discovery_daemon, discovery_address):
+    @pytest.mark.asyncio
+    async def test_subscriber_waits_for_topic(
+        self, discovery_daemon, discovery_address
+    ):
         """Subscriber should wait for topic to appear."""
-        received = []
+        connected_event = asyncio.Event()
 
-        # Create subscriber first (will wait)
-        def create_subscriber():
+        async def subscriber_task():
             sub = Subscriber(
                 topic_name="/test/wait_topic",
                 message_type=SampleMessage,
@@ -198,14 +199,16 @@ class TestSubscriber:
                 wait_for_topic=True,
                 topic_timeout=5.0,
             )
-            received.append(sub.is_connected)
+            # _async_connect is called in receive(), which waits for the topic
+            await sub.receive()  # This triggers async wait
+            connected_event.set()
             sub.close()
 
-        sub_thread = threading.Thread(target=create_subscriber, daemon=True)
-        sub_thread.start()
+        # Start subscriber task (will wait for topic)
+        sub_task = asyncio.create_task(subscriber_task())
 
         # Create publisher after delay
-        time.sleep(0.5)
+        await asyncio.sleep(0.5)
         pub = Publisher(
             topic_name="/test/wait_topic",
             message_type=SampleMessage,
@@ -213,12 +216,15 @@ class TestSubscriber:
             discovery_address=discovery_address,
         )
 
-        sub_thread.join(timeout=6.0)
-
-        assert len(received) == 1
-        assert received[0]
-
-        pub.close()
+        # Wait for subscriber to connect
+        try:
+            await asyncio.wait_for(connected_event.wait(), timeout=6.0)
+            assert connected_event.is_set()
+        finally:
+            sub_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await sub_task
+            pub.close()
 
 
 class TestPubSubIntegration:

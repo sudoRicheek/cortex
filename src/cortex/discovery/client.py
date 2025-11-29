@@ -5,6 +5,7 @@ Provides a client interface to interact with the discovery daemon.
 Uses synchronous ZMQ since discovery is typically done once at startup.
 """
 
+import asyncio
 import contextlib
 import logging
 import threading
@@ -36,7 +37,7 @@ class DiscoveryClient:
         self,
         discovery_address: str = DEFAULT_DISCOVERY_ADDRESS,
         timeout_ms: int = 5000,
-        retries: int = 3,
+        retries: int = 1,
     ):
         """
         Initialize the discovery client.
@@ -189,7 +190,7 @@ class DiscoveryClient:
         poll_interval: float = 0.5,
     ) -> TopicInfo | None:
         """
-        Wait for a topic to become available.
+        Wait for a topic to become available (blocking).
 
         Args:
             topic_name: Name of the topic to wait for
@@ -206,6 +207,35 @@ class DiscoveryClient:
             if topic_info:
                 return topic_info
             time.sleep(poll_interval)
+
+        return None
+
+    async def wait_for_topic_async(
+        self,
+        topic_name: str,
+        timeout: float = 600.0,
+        poll_interval: float = 0.5,
+    ) -> TopicInfo | None:
+        """
+        Wait for a topic to become available (async, non-blocking).
+
+        Uses asyncio.sleep to avoid blocking the event loop.
+
+        Args:
+            topic_name: Name of the topic to wait for
+            timeout: Maximum time to wait in seconds
+            poll_interval: Time between lookup attempts in seconds
+
+        Returns:
+            TopicInfo if found within timeout, None otherwise
+        """
+        start_time = time.perf_counter()
+
+        while time.perf_counter() - start_time < timeout:
+            topic_info = self.lookup_topic(topic_name)
+            if topic_info:
+                return topic_info
+            await asyncio.sleep(poll_interval)
 
         return None
 

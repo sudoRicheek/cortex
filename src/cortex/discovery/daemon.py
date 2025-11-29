@@ -11,8 +11,6 @@ Default IPC address: ipc:///tmp/cortex_discovery
 import contextlib
 import logging
 import os
-import signal
-import sys
 import threading
 import time
 
@@ -34,7 +32,7 @@ logger = logging.getLogger("cortex.discovery")
 
 
 # Default discovery address
-DEFAULT_DISCOVERY_ADDRESS = "ipc:///tmp/cortex_discovery"
+DEFAULT_DISCOVERY_ADDRESS = "ipc:///tmp/cortex/discovery.sock"
 
 
 class DiscoveryDaemon:
@@ -362,15 +360,6 @@ def main():
     daemon = DiscoveryDaemon(
         address=args.address, cleanup_interval=args.cleanup_interval
     )
-
-    # Handle signals
-    def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}")
-        daemon.stop()
-        sys.exit(0)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
     daemon.start()
 

@@ -3,14 +3,13 @@ Subscriber implementation for Cortex.
 
 Provides a ZeroMQ-based subscriber that queries the discovery daemon
 and subscribes to topics using IPC sockets with asyncio.
-
-Note: Subscribers are always created through Node.create_subscriber().
 """
 
 import asyncio
 import contextlib
 import logging
 import time
+from typing import Any
 
 import zmq
 import zmq.asyncio
@@ -51,9 +50,8 @@ class Subscriber:
         node_name: str = "anonymous",
         discovery_address: str = DEFAULT_DISCOVERY_ADDRESS,
         queue_size: int = 10,
-        auto_connect: bool = True,
         wait_for_topic: bool = True,
-        topic_timeout: float = 30.0,
+        topic_timeout: float = 600.0,
         context: zmq.asyncio.Context | None = None,
     ):
         """
@@ -66,7 +64,6 @@ class Subscriber:
             node_name: Name of the node creating this subscriber
             discovery_address: Address of the discovery daemon
             queue_size: High-water mark for incoming messages
-            auto_connect: Whether to automatically connect on creation
             wait_for_topic: Whether to wait for topic to be available
             topic_timeout: Timeout for waiting for topic (seconds)
             context: Shared ZMQ async context from Node
@@ -78,6 +75,7 @@ class Subscriber:
         self.discovery_address = discovery_address
         self.queue_size = queue_size
         self.topic_timeout = topic_timeout
+        self._wait_for_topic = wait_for_topic
 
         # Connection info
         self._topic_info: TopicInfo | None = None
@@ -88,7 +86,9 @@ class Subscriber:
         self._socket: zmq.asyncio.Socket | None = None
 
         # Discovery client
-        self._discovery_client: DiscoveryClient | None = None
+        self._discovery_client: DiscoveryClient | None = DiscoveryClient(
+            discovery_address=self.discovery_address
+        )
 
         # Statistics
         self._receive_count = 0
@@ -97,56 +97,79 @@ class Subscriber:
         # Executor for receive loop
         self._executor: AsyncExecutor | None = None
 
-        # Initialize
-        if auto_connect:
-            self._connect(wait=wait_for_topic)
+        # Try non-blocking connect (will succeed if topic already exists)
+        self._connect()
 
-    def _connect(self, wait: bool = True) -> bool:
+    def _connect(self) -> bool:
         """
-        Connect to the topic.
-
-        Args:
-            wait: Whether to wait for the topic to be available
+        Connect to the topic (non-blocking lookup only).
 
         Returns:
             True if connected successfully
         """
         try:
-            self._discovery_client = DiscoveryClient(
-                discovery_address=self.discovery_address
-            )
+            # Non-blocking lookup only
+            self._topic_info = self._discovery_client.lookup_topic(self.topic_name)
+            return self._finalize_connection()
 
-            # Look up the topic
-            if wait:
+        except Exception as e:
+            logger.error(f"Failed to connect to topic: {e}")
+            return False
+
+    async def _async_connect(self) -> bool:
+        """
+        Async connect to the topic, waiting if necessary.
+
+        Uses DiscoveryClient.wait_for_topic_async for non-blocking wait.
+
+        Returns:
+            True if connected successfully
+        """
+        if self._connected:
+            return True
+
+        try:
+            if self._wait_for_topic:
                 logger.info(f"Waiting for topic {self.topic_name}...")
-                self._topic_info = self._discovery_client.wait_for_topic(
+                self._topic_info = await self._discovery_client.wait_for_topic_async(
                     self.topic_name, timeout=self.topic_timeout
                 )
             else:
                 self._topic_info = self._discovery_client.lookup_topic(self.topic_name)
 
-            if self._topic_info:
-                # Verify message type
-                if self._topic_info.fingerprint != self.message_type.fingerprint():
-                    logger.warning(
-                        f"Message type mismatch for {self.topic_name}: "
-                        f"expected {self.message_type.__name__}, "
-                        f"got {self._topic_info.message_type}"
-                    )
-
-                # Connect to the publisher
-                self._setup_socket(self._topic_info.address)
-                self._connected = True
-                logger.info(
-                    f"Connected to topic {self.topic_name} at {self._topic_info.address}"
-                )
-                return True
-            else:
-                logger.warning(f"Topic {self.topic_name} not found")
-                return False
+            return self._finalize_connection()
 
         except Exception as e:
             logger.error(f"Failed to connect to topic: {e}")
+            return False
+
+    def _finalize_connection(self) -> bool:
+        """
+        Finalize connection after topic info is obtained.
+
+        Returns:
+            True if connected successfully
+        """
+        if self._topic_info:
+            # Verify message type
+            if self._topic_info.fingerprint != self.message_type.fingerprint():
+                logger.warning(
+                    f"Message type mismatch for {self.topic_name}: "
+                    f"expected {self.message_type.__name__}, "
+                    f"got {self._topic_info.message_type}"
+                )
+
+            # Connect to the publisher
+            self._setup_socket(self._topic_info.address)
+            self._connected = True
+            logger.info(
+                f"Connected to topic {self.topic_name} at {self._topic_info.address}"
+            )
+            return True
+        else:
+            logger.warning(
+                f"Topic {self.topic_name} not found yet, will retry in run()"
+            )
             return False
 
     def _setup_socket(self, address: str) -> None:
@@ -202,12 +225,12 @@ class Subscriber:
             logger.error(f"Failed to receive message: {e}")
             return None
 
-    async def _receive_and_callback(self) -> None:
+    async def _receive_and_callback(self) -> Any:
         """Receive a message and invoke the callback."""
         result = await self.receive()
         if result:
             message, header = result
-            await self._callback(message, header)
+            return await self._callback(message, header)
 
     def start(self) -> None:
         """Start the subscriber receive loop."""
@@ -233,6 +256,10 @@ class Subscriber:
         """
         if self._callback is None:
             logger.warning(f"No callback set for subscriber {self.topic_name}")
+            return
+
+        if not self._connected and not await self._async_connect():
+            logger.error(f"Failed to connect subscriber for {self.topic_name}")
             return
 
         logger.info(f"Subscriber for {self.topic_name} running")

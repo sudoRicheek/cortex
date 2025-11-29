@@ -260,6 +260,7 @@ def main():
         262144,  # 256 KB
         1048576,  # 1 MB - large messages
         4194304,  # 4 MB - very large (like images)
+        16777216,  # 16 MB - very large (like high-res images)
     ]
 
     duration = 3.0  # seconds per test

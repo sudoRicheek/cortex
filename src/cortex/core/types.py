@@ -13,5 +13,5 @@ from cortex.messages.base import Message, MessageHeader
 # Async callback with any arguments
 AsyncCallback = Callable[..., Coroutine[Any, Any, None]]
 
-# Callback for message reception: (message, header) -> None
-MessageCallback = Callable[[Message, MessageHeader], Coroutine[Any, Any, None]]
+# Callback for message reception: (message, header) -> Any
+MessageCallback = Callable[[Message, MessageHeader], Coroutine[Any, Any, Any]]
