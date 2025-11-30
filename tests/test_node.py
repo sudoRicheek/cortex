@@ -112,9 +112,7 @@ class TestNode:
         run_task = asyncio.create_task(sub_node.run())
 
         # Publish data
-        await pub.publish(
-            SensorData(timestamp=time.time(), value=42.0, sensor_id="sensor_1")
-        )
+        pub.publish(SensorData(timestamp=time.time(), value=42.0, sensor_id="sensor_1"))
 
         # Wait for message to be received
         with contextlib.suppress(asyncio.TimeoutError):
@@ -182,7 +180,7 @@ class TestNode:
         run_task = asyncio.create_task(sub_node.run())
 
         # Publish
-        await pub.publish(IntMessage(data=123))
+        pub.publish(IntMessage(data=123))
 
         # Wait for message
         with contextlib.suppress(asyncio.TimeoutError):
