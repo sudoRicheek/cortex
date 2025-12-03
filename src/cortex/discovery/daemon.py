@@ -10,7 +10,6 @@ Default IPC address: ipc:///tmp/cortex/discovery.sock
 
 import contextlib
 import os
-import threading
 
 import zmq
 
@@ -57,9 +56,8 @@ class DiscoveryDaemon:
         self._context: zmq.Context | None = None
         self._socket: zmq.Socket | None = None
 
-        # Control flags
+        # Control flag
         self._running = False
-        self._shutdown_event = threading.Event()
 
     def _ensure_ipc_path(self) -> None:
         """Ensure the IPC socket directory exists."""
@@ -90,7 +88,6 @@ class DiscoveryDaemon:
         self._socket.setsockopt(zmq.LINGER, 0)  # Immediate shutdown
 
         self._running = True
-        self._shutdown_event.clear()
 
         logger.info("=" * 50)
         logger.info("DISCOVERY DAEMON STARTED")
@@ -102,13 +99,13 @@ class DiscoveryDaemon:
         except KeyboardInterrupt:
             logger.info("Received interrupt signal")
         finally:
-            self.stop()
+            self._cleanup()
 
     def _run_loop(self) -> None:
         """Main event loop."""
-        while self._running and not self._shutdown_event.is_set():
+        while self._running:
             try:
-                # Try to receive a request
+                # Try to receive a request (blocks up to RCVTIMEO)
                 try:
                     request_bytes = self._socket.recv(copy=False)
 
@@ -116,10 +113,13 @@ class DiscoveryDaemon:
                     response = self._handle_request(request_bytes)
                     self._socket.send(response.to_bytes())
                 except zmq.Again:
-                    # No message available, continue
+                    # Timeout, check _running and continue
                     continue
 
             except Exception as e:
+                if not self._running:
+                    # We're shutting down, exit cleanly
+                    break
                 logger.error(f"Error in discovery loop: {e}")
                 # Send error response if we received a request
                 try:
@@ -253,12 +253,8 @@ class DiscoveryDaemon:
         logger.info("SHUTDOWN command received")
         return DiscoveryResponse(status=DiscoveryStatus.OK, message="Shutting down")
 
-    def stop(self) -> None:
-        """Stop the discovery daemon."""
-        logger.info("Stopping discovery daemon")
-        self._shutdown_event.set()
-        self._running = False
-
+    def _cleanup(self) -> None:
+        """Clean up resources."""
         if self._socket:
             try:
                 self._socket.close()
@@ -283,6 +279,11 @@ class DiscoveryDaemon:
         logger.info("=" * 50)
         logger.info("DISCOVERY DAEMON STOPPED")
         logger.info("=" * 50)
+
+    def stop(self) -> None:
+        """Stop the discovery daemon."""
+        logger.info("Stopping discovery daemon")
+        self._running = False
 
 
 def main():
