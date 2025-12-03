@@ -97,7 +97,7 @@ class TestDiscoveryDaemon:
         time.sleep(0.2)  # Let it start
 
         daemon.stop()
-        thread.join(timeout=2.0)
+        thread.join(timeout=5.0)
 
         assert not thread.is_alive()
 

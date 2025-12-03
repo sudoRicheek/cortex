@@ -10,6 +10,7 @@ Default IPC address: ipc:///tmp/cortex/discovery.sock
 
 import contextlib
 import os
+import threading
 
 import zmq
 
@@ -56,8 +57,9 @@ class DiscoveryDaemon:
         self._context: zmq.Context | None = None
         self._socket: zmq.Socket | None = None
 
-        # Control flag
+        # Control flags
         self._running = False
+        self._shutdown_event = threading.Event()
 
     def _ensure_ipc_path(self) -> None:
         """Ensure the IPC socket directory exists."""
@@ -88,6 +90,7 @@ class DiscoveryDaemon:
         self._socket.setsockopt(zmq.LINGER, 0)  # Immediate shutdown
 
         self._running = True
+        self._shutdown_event.clear()
 
         logger.info("=" * 50)
         logger.info("DISCOVERY DAEMON STARTED")
@@ -103,7 +106,7 @@ class DiscoveryDaemon:
 
     def _run_loop(self) -> None:
         """Main event loop."""
-        while self._running:
+        while self._running and not self._shutdown_event.is_set():
             try:
                 # Try to receive a request
                 try:
@@ -253,6 +256,7 @@ class DiscoveryDaemon:
     def stop(self) -> None:
         """Stop the discovery daemon."""
         logger.info("Stopping discovery daemon")
+        self._shutdown_event.set()
         self._running = False
 
         if self._socket:

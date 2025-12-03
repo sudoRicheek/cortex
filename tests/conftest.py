@@ -78,6 +78,7 @@ class DiscoveryDaemonFixture:
         """Stop the discovery daemon."""
         if self._daemon:
             self._daemon._running = False
+            self._daemon._shutdown_event.set()
 
         # Wait for thread to finish (daemon cleans up its own context)
         if self._thread:
