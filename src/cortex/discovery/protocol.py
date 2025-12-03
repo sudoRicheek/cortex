@@ -17,7 +17,6 @@ class DiscoveryCommand(IntEnum):
     UNREGISTER_TOPIC = 2
     LOOKUP_TOPIC = 3
     LIST_TOPICS = 4
-    HEARTBEAT = 5
     SHUTDOWN = 99
 
 

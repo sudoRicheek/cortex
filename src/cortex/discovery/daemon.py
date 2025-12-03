@@ -5,14 +5,11 @@ The discovery daemon runs as a separate process and maintains a registry
 of all active topics. Publishers register their topics, and subscribers
 query for topic addresses.
 
-Default IPC address: ipc:///tmp/cortex_discovery
+Default IPC address: ipc:///tmp/cortex/discovery.sock
 """
 
 import contextlib
-import logging
 import os
-import threading
-import time
 
 import zmq
 
@@ -23,12 +20,10 @@ from cortex.discovery.protocol import (
     DiscoveryStatus,
     TopicInfo,
 )
+from cortex.utils.logging import get_logger, set_log_level
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
-)
-logger = logging.getLogger("cortex.discovery")
+# Get logger for this module
+logger = get_logger("cortex.discovery")
 
 
 # Default discovery address
@@ -45,32 +40,24 @@ class DiscoveryDaemon:
     def __init__(
         self,
         address: str = DEFAULT_DISCOVERY_ADDRESS,
-        cleanup_interval: float = 30.0,
     ):
         """
         Initialize the discovery daemon.
 
         Args:
-            address: ZMQ address to bind to (default: ipc:///tmp/cortex_discovery)
-            cleanup_interval: Interval in seconds for cleaning up stale topics
+            address: ZMQ address to bind to (default: ipc:///tmp/cortex/discovery.sock)
         """
         self.address = address
-        self.cleanup_interval = cleanup_interval
 
         # Topic registry: topic_name -> TopicInfo
         self._topics: dict[str, TopicInfo] = {}
-        self._topics_lock = threading.Lock()
-
-        # Last heartbeat time for each topic
-        self._heartbeats: dict[str, float] = {}
 
         # ZMQ context and socket
         self._context: zmq.Context | None = None
         self._socket: zmq.Socket | None = None
 
-        # Control flags
+        # Control flag
         self._running = False
-        self._shutdown_event = threading.Event()
 
     def _ensure_ipc_path(self) -> None:
         """Ensure the IPC socket directory exists."""
@@ -93,14 +80,19 @@ class DiscoveryDaemon:
         self._socket = self._context.socket(zmq.REP)
         self._socket.bind(self.address)
 
+        #! We do not set a high water mark on the socket.
+        #! It is 1000 by default, which is reasonable for our use case.
+
         # Set socket options for responsiveness
         self._socket.setsockopt(zmq.RCVTIMEO, 1000)  # 1 second timeout
         self._socket.setsockopt(zmq.LINGER, 0)  # Immediate shutdown
 
         self._running = True
-        self._shutdown_event.clear()
 
-        logger.info("Discovery daemon started")
+        logger.info("=" * 50)
+        logger.info("DISCOVERY DAEMON STARTED")
+        logger.info("  Address: %s", self.address)
+        logger.info("=" * 50)
 
         try:
             self._run_loop()
@@ -111,26 +103,18 @@ class DiscoveryDaemon:
 
     def _run_loop(self) -> None:
         """Main event loop."""
-        last_cleanup = time.time()
-
-        while self._running and not self._shutdown_event.is_set():
+        while self._running:
             try:
                 # Try to receive a request
                 try:
-                    request_bytes = self._socket.recv(zmq.NOBLOCK)
+                    request_bytes = self._socket.recv(copy=False)
+
+                    # Process the request
+                    response = self._handle_request(request_bytes)
+                    self._socket.send(response.to_bytes())
                 except zmq.Again:
                     # No message available, continue
-                    time.sleep(0.01)
-
-                    # Periodic cleanup
-                    if time.time() - last_cleanup > self.cleanup_interval:
-                        self._cleanup_stale_topics()
-                        last_cleanup = time.time()
                     continue
-
-                # Process the request
-                response = self._handle_request(request_bytes)
-                self._socket.send(response.to_bytes())
 
             except Exception as e:
                 logger.error(f"Error in discovery loop: {e}")
@@ -160,8 +144,6 @@ class DiscoveryDaemon:
             return self._handle_lookup(request)
         elif request.command == DiscoveryCommand.LIST_TOPICS:
             return self._handle_list()
-        elif request.command == DiscoveryCommand.HEARTBEAT:
-            return self._handle_heartbeat(request)
         elif request.command == DiscoveryCommand.SHUTDOWN:
             return self._handle_shutdown()
         else:
@@ -180,20 +162,23 @@ class DiscoveryDaemon:
 
         topic_name = request.topic_info.name
 
-        with self._topics_lock:
-            if topic_name in self._topics:
-                # Allow re-registration from same publisher
-                existing = self._topics[topic_name]
-                if existing.publisher_node != request.topic_info.publisher_node:
-                    return DiscoveryResponse(
-                        status=DiscoveryStatus.ALREADY_EXISTS,
-                        message=f"Topic {topic_name} already registered by {existing.publisher_node}",
-                    )
+        if topic_name in self._topics:
+            # Allow re-registration from same publisher
+            existing = self._topics[topic_name]
+            if existing.publisher_node != request.topic_info.publisher_node:
+                return DiscoveryResponse(
+                    status=DiscoveryStatus.ALREADY_EXISTS,
+                    message=f"Topic {topic_name} already registered by {existing.publisher_node}",
+                )
 
-            self._topics[topic_name] = request.topic_info
-            self._heartbeats[topic_name] = time.time()
+        self._topics[topic_name] = request.topic_info
 
-        logger.info(f"Registered topic: {topic_name} at {request.topic_info.address}")
+        logger.info("-" * 50)
+        logger.info("REGISTER topic: %s", topic_name)
+        logger.info("  Address:     %s", request.topic_info.address)
+        logger.info("  Publisher:   %s", request.topic_info.publisher_node)
+        logger.info("  Type:        %s", request.topic_info.message_type)
+        logger.info("  Fingerprint: %d", request.topic_info.fingerprint)
 
         return DiscoveryResponse(
             status=DiscoveryStatus.OK, message=f"Registered topic: {topic_name}"
@@ -211,17 +196,16 @@ class DiscoveryDaemon:
                 message="Missing topic name in unregister request",
             )
 
-        with self._topics_lock:
-            if topic_name not in self._topics:
-                return DiscoveryResponse(
-                    status=DiscoveryStatus.NOT_FOUND,
-                    message=f"Topic {topic_name} not found",
-                )
+        if topic_name not in self._topics:
+            return DiscoveryResponse(
+                status=DiscoveryStatus.NOT_FOUND,
+                message=f"Topic {topic_name} not found",
+            )
 
-            del self._topics[topic_name]
-            self._heartbeats.pop(topic_name, None)
+        del self._topics[topic_name]
 
-        logger.info(f"Unregistered topic: {topic_name}")
+        logger.info("-" * 50)
+        logger.info("UNREGISTER topic: %s", topic_name)
 
         return DiscoveryResponse(
             status=DiscoveryStatus.OK, message=f"Unregistered topic: {topic_name}"
@@ -237,12 +221,14 @@ class DiscoveryDaemon:
                 message="Missing topic_name in lookup request",
             )
 
-        with self._topics_lock:
-            topic_info = self._topics.get(topic_name)
+        topic_info = self._topics.get(topic_name)
 
+        logger.info("-" * 50)
         if topic_info:
+            logger.info("LOOKUP topic: %s -> FOUND", topic_name)
             return DiscoveryResponse(status=DiscoveryStatus.OK, topic_info=topic_info)
         else:
+            logger.info("LOOKUP topic: %s -> NOT FOUND", topic_name)
             return DiscoveryResponse(
                 status=DiscoveryStatus.NOT_FOUND,
                 message=f"Topic {topic_name} not found",
@@ -250,59 +236,24 @@ class DiscoveryDaemon:
 
     def _handle_list(self) -> DiscoveryResponse:
         """Handle list all topics."""
-        with self._topics_lock:
-            topics = list(self._topics.values())
+        topics = list(self._topics.values())
+
+        logger.info("-" * 50)
+        logger.info("LIST topics: %d registered", len(topics))
 
         return DiscoveryResponse(status=DiscoveryStatus.OK, topics=topics)
 
-    def _handle_heartbeat(self, request: DiscoveryRequest) -> DiscoveryResponse:
-        """Handle heartbeat from publisher."""
-        topic_name = request.topic_name
-
-        if not topic_name:
-            return DiscoveryResponse(
-                status=DiscoveryStatus.ERROR,
-                message="Missing topic_name in heartbeat request",
-            )
-
-        with self._topics_lock:
-            if topic_name in self._topics:
-                self._heartbeats[topic_name] = time.time()
-                return DiscoveryResponse(status=DiscoveryStatus.OK)
-            else:
-                return DiscoveryResponse(
-                    status=DiscoveryStatus.NOT_FOUND,
-                    message=f"Topic {topic_name} not registered",
-                )
-
     def _handle_shutdown(self) -> DiscoveryResponse:
         """Handle shutdown request."""
-        logger.info("Received shutdown command")
         self._running = False
-        self._shutdown_event.set()
+        logger.info("-" * 50)
+        logger.info("SHUTDOWN command received")
         return DiscoveryResponse(status=DiscoveryStatus.OK, message="Shutting down")
-
-    def _cleanup_stale_topics(self) -> None:
-        """Remove topics that haven't sent a heartbeat recently."""
-        stale_threshold = time.time() - (self.cleanup_interval * 3)
-
-        with self._topics_lock:
-            stale_topics = [
-                name
-                for name, last_beat in self._heartbeats.items()
-                if last_beat < stale_threshold
-            ]
-
-            for topic_name in stale_topics:
-                logger.warning(f"Removing stale topic: {topic_name}")
-                del self._topics[topic_name]
-                del self._heartbeats[topic_name]
 
     def stop(self) -> None:
         """Stop the discovery daemon."""
         logger.info("Stopping discovery daemon")
         self._running = False
-        self._shutdown_event.set()
 
         if self._socket:
             try:
@@ -325,7 +276,9 @@ class DiscoveryDaemon:
                 with contextlib.suppress(Exception):
                     os.remove(path)
 
-        logger.info("Discovery daemon stopped")
+        logger.info("=" * 50)
+        logger.info("DISCOVERY DAEMON STOPPED")
+        logger.info("=" * 50)
 
 
 def main():
@@ -339,12 +292,6 @@ def main():
         help=f"ZMQ address to bind to (default: {DEFAULT_DISCOVERY_ADDRESS})",
     )
     parser.add_argument(
-        "--cleanup-interval",
-        type=float,
-        default=30.0,
-        help="Interval for cleaning up stale topics (default: 30s)",
-    )
-    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -354,12 +301,10 @@ def main():
     args = parser.parse_args()
 
     # Set log level
-    logging.getLogger().setLevel(getattr(logging, args.log_level))
+    set_log_level(logger, args.log_level)
 
     # Create and run daemon
-    daemon = DiscoveryDaemon(
-        address=args.address, cleanup_interval=args.cleanup_interval
-    )
+    daemon = DiscoveryDaemon(address=args.address)
 
     daemon.start()
 

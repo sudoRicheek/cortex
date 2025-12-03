@@ -9,7 +9,6 @@ import contextlib
 import logging
 import os
 import time
-import uuid
 
 import zmq
 import zmq.asyncio
@@ -24,18 +23,19 @@ logger = logging.getLogger("cortex.publisher")
 
 def generate_ipc_address(topic_name: str, node_name: str) -> str:
     """
-    Generate a unique IPC address for a topic and node.
+    Generate a IPC address for a topic and node.
+
+    Assumption is that node_name and topic_name form a unique combination.
+    So there are no two publishers with the same node_name publishing the same topic_name.
     """
     # Create a safe filename from topic name and node name
     safe_name = node_name + "__" + topic_name.replace("/", "_").lstrip("_")
-
-    uuid_str = str(uuid.uuid4())[:8] # Generate a unique identifier to make it unique
 
     # Ensure the directory exists
     ipc_dir = "/tmp/cortex/topics"
     os.makedirs(ipc_dir, exist_ok=True)
 
-    return f"ipc://{ipc_dir}/{safe_name}.{uuid_str}.sock"
+    return f"ipc://{ipc_dir}/{safe_name}.sock"
 
 
 class Publisher:
@@ -89,7 +89,9 @@ class Publisher:
         # if context is async context, convert to sync context
         self._context: zmq.asyncio.Context | zmq.Context = context or zmq.Context()
         if isinstance(self._context, zmq.asyncio.Context):
-            self._context: zmq.Context = zmq.Context(self._context) # publishers are sync
+            self._context: zmq.Context = zmq.Context(
+                self._context
+            )  # publishers are sync
         self._socket: zmq.Socket | None = None
 
         # Discovery client
