@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from bench_latency import run_latency_benchmark
 from bench_throughput import run_throughput_benchmark
+
 from cortex.messages.standard import ArrayMessage
 
 
@@ -264,7 +265,9 @@ def measure_serialization_overhead() -> dict:
             "roundtrip_ms": serialize_time + deserialize_time,
         }
 
-        print(f"  - {name}: to_wire={serialize_time:.3f}ms, from_wire={deserialize_time:.3f}ms")
+        print(
+            f"  - {name}: to_wire={serialize_time:.3f}ms, from_wire={deserialize_time:.3f}ms"
+        )
 
         sender.close()
         receiver.close()

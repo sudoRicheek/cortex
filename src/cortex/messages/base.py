@@ -177,7 +177,10 @@ class Message:
         The first frame is always the fixed-size header. The second frame holds
         packed metadata, and any remaining frames are raw out-of-band buffers.
         """
-        return [self._build_header().to_bytes(), *serialize_message_frames(self._field_values())]
+        return [
+            self._build_header().to_bytes(),
+            *serialize_message_frames(self._field_values()),
+        ]
 
     @classmethod
     def from_bytes(cls: type[T], data: bytes) -> tuple[T, MessageHeader]:

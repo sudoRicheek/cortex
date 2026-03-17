@@ -133,7 +133,9 @@ def _encode_transport_value(value: Any, buffers: list[Any]) -> Any:
         }
 
     if isinstance(value, dict):
-        return {key: _encode_transport_value(item, buffers) for key, item in value.items()}
+        return {
+            key: _encode_transport_value(item, buffers) for key, item in value.items()
+        }
 
     if isinstance(value, (list, tuple)):
         return [_encode_transport_value(item, buffers) for item in value]
@@ -147,7 +149,9 @@ def _decode_transport_value(value: Any, buffers: list[Any]) -> Any:
         buffer_index = value["buffer"]
         buffer_view = _as_buffer_view(buffers[buffer_index])
         shape = tuple(value["shape"])
-        array = np.frombuffer(buffer_view, dtype=np.dtype(value["dtype"])).reshape(shape)
+        array = np.frombuffer(buffer_view, dtype=np.dtype(value["dtype"])).reshape(
+            shape
+        )
 
         if value[_OOB_MARKER] == "numpy":
             return array
@@ -164,7 +168,9 @@ def _decode_transport_value(value: Any, buffers: list[Any]) -> Any:
             return tensor
 
     if isinstance(value, dict):
-        return {key: _decode_transport_value(item, buffers) for key, item in value.items()}
+        return {
+            key: _decode_transport_value(item, buffers) for key, item in value.items()
+        }
 
     if isinstance(value, list):
         return [_decode_transport_value(item, buffers) for item in value]
@@ -197,7 +203,9 @@ def serialize_numpy(arr: np.ndarray) -> bytes:
     return bytes(header) + contiguous.tobytes(order="C")
 
 
-def deserialize_numpy(data: bytes | memoryview, *, copy: bool = False) -> tuple[np.ndarray, int]:
+def deserialize_numpy(
+    data: bytes | memoryview, *, copy: bool = False
+) -> tuple[np.ndarray, int]:
     """
     Deserialize bytes to a NumPy array.
 
