@@ -15,11 +15,13 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import zmq
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from bench_latency import run_latency_benchmark
 from bench_throughput import run_throughput_benchmark
+from cortex.messages.standard import ArrayMessage
 
 
 def run_all_benchmarks() -> dict:
@@ -186,8 +188,7 @@ def get_system_info() -> dict:
 
 
 def measure_serialization_overhead() -> dict:
-    """Measure serialization/deserialization overhead."""
-    from cortex.utils.serialization import deserialize, serialize
+    """Measure wire serialization overhead using multipart transport frames."""
 
     results = {}
 
@@ -199,41 +200,74 @@ def measure_serialization_overhead() -> dict:
     ]
 
     for name, data in test_cases:
+        message = ArrayMessage(data=data)
+        topic = b"/benchmark/serialization"
+        endpoint = f"inproc://cortex_serialization_{name}"
+        context = zmq.Context.instance()
+        sender = context.socket(zmq.PAIR)
+        receiver = context.socket(zmq.PAIR)
+        sender.setsockopt(zmq.LINGER, 0)
+        receiver.setsockopt(zmq.LINGER, 0)
+        receiver.bind(endpoint)
+        sender.connect(endpoint)
+
+        def frame_size_bytes(frames: list[object]) -> int:
+            total = 0
+            for frame in frames:
+                if hasattr(frame, "nbytes"):
+                    total += int(frame.nbytes)
+                else:
+                    total += len(frame)
+            return total
+
         # Warm up
         for _ in range(10):
-            serialized = serialize(data)
-            deserialize(serialized)
+            sender.send_multipart([topic, *message.to_frames()], copy=False)
+            warmup_frames = receiver.recv_multipart(copy=False)
+            ArrayMessage.from_frames(warmup_frames[1:])
 
-        # Benchmark serialization
+        # Benchmark A->B wire transfer and B-side decode
         iterations = 100
+        wire_total = 0.0
+        decode_total = 0.0
+        frames = []
 
-        start = time.perf_counter()
         for _ in range(iterations):
-            serialized = serialize(data)
-        serialize_time = (time.perf_counter() - start) / iterations * 1000  # ms
+            wire_start = time.perf_counter()
+            sender.send_multipart([topic, *message.to_frames()], copy=False)
+            frames = receiver.recv_multipart(copy=False)
+            wire_end = time.perf_counter()
 
-        # Benchmark deserialization
-        start = time.perf_counter()
-        for _ in range(iterations):
-            deserialize(serialized)
-        deserialize_time = (time.perf_counter() - start) / iterations * 1000  # ms
+            decode_start = wire_end
+            ArrayMessage.from_frames(frames[1:])
+            decode_end = time.perf_counter()
 
-        data_size_kb = data.nbytes / 1024
+            wire_total += wire_end - wire_start
+            decode_total += decode_end - decode_start
+
+        serialize_time = (wire_total / iterations) * 1000  # ms (A->B wire path)
+        deserialize_time = (decode_total / iterations) * 1000  # ms (B-side decode)
+
+        # Use real wire bytes including topic frame.
+        data_size_bytes = frame_size_bytes(frames)
+        data_size_kb = data_size_bytes / 1024
 
         results[name] = {
             "data_size_kb": data_size_kb,
+            "wire_size_bytes": data_size_bytes,
             "serialize_ms": serialize_time,
             "deserialize_ms": deserialize_time,
             "total_ms": serialize_time + deserialize_time,
-            "serialize_throughput_mb_s": (data_size_kb / 1024)
-            / (serialize_time / 1000),
-            "deserialize_throughput_mb_s": (data_size_kb / 1024)
-            / (deserialize_time / 1000),
+            # Throughput is intentionally omitted here because inproc multipart
+            # transport with copy=False can look unrealistically high and is
+            # often misread as physical link bandwidth.
+            "roundtrip_ms": serialize_time + deserialize_time,
         }
 
-        print(
-            f"  - {name}: serialize={serialize_time:.3f}ms, deserialize={deserialize_time:.3f}ms"
-        )
+        print(f"  - {name}: to_wire={serialize_time:.3f}ms, from_wire={deserialize_time:.3f}ms")
+
+        sender.close()
+        receiver.close()
 
     return results
 
@@ -288,17 +322,20 @@ def print_summary(results: dict) -> None:
                 f"{data['loss_rate_percent']:>10.2f}"
             )
 
-    # Serialization overhead
-    print("\n📊 SERIALIZATION OVERHEAD")
+    # Wire serialization overhead
+    print("\n📊 WIRE SERIALIZATION OVERHEAD (MULTIPART)")
     print("-" * 60)
-    print(f"{'Size':<20} {'Serialize':>12} {'Deserialize':>12} {'Throughput':>12}")
+    print(
+        f"{'Size':<20} {'Wire Bytes':>12} {'To Wire':>12} {'From Wire':>12} {'Roundtrip':>12}"
+    )
     print("-" * 60)
 
     for name, data in results["benchmarks"].get("serialization", {}).items():
         print(
-            f"{name:<20} {data['serialize_ms']:>10.3f}ms "
+            f"{name:<20} {data['wire_size_bytes']:>12,} "
+            f"{data['serialize_ms']:>10.3f}ms "
             f"{data['deserialize_ms']:>10.3f}ms "
-            f"{data['serialize_throughput_mb_s']:>10.1f} MB/s"
+            f"{data['roundtrip_ms']:>10.3f}ms"
         )
 
     print("\n" + "=" * 80)

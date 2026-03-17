@@ -84,6 +84,7 @@ class Publisher:
 
         # Generate IPC address for this topic
         self.address = generate_ipc_address(topic_name, node_name)
+        self._topic_bytes = topic_name.encode("utf-8")
 
         # ZMQ setup - context provided by Node
         # if context is async context, convert to sync context
@@ -172,12 +173,12 @@ class Publisher:
             )
 
         try:
-            # Serialize and send
-            data = message.to_bytes()
-
-            # Send with topic name as first frame for filtering
+            # Send with topic name as first frame for filtering.
+            # Message payload uses frame-aware transport to keep large buffers
+            # out of the metadata blob.
             self._socket.send_multipart(
-                [self.topic_name.encode("utf-8"), data], flags=flags
+                [self._topic_bytes, *message.to_frames()],
+                flags=flags,
             )
 
             self._publish_count += 1

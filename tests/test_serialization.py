@@ -76,6 +76,26 @@ class TestNumpySerialization:
             np.testing.assert_array_equal(arr, restored)
             assert arr.dtype == restored.dtype, f"dtype mismatch for {dtype}"
 
+    def test_deserialize_numpy_zero_copy(self):
+        """NumPy deserialization should avoid an extra copy by default."""
+        arr = np.arange(16, dtype=np.float32).reshape(4, 4)
+
+        data = serialize_numpy(arr)
+        restored, _ = deserialize_numpy(data)
+
+        assert restored.base is not None
+        np.testing.assert_array_equal(arr, restored)
+
+    def test_deserialize_numpy_copy_opt_in(self):
+        """Callers can request an owned NumPy buffer when needed."""
+        arr = np.arange(8, dtype=np.int32)
+
+        data = serialize_numpy(arr)
+        restored, _ = deserialize_numpy(data, copy=True)
+
+        assert restored.base is None
+        np.testing.assert_array_equal(arr, restored)
+
 
 class TestGenericSerialization:
     """Tests for generic serialize/deserialize functions."""

@@ -201,16 +201,23 @@ class Subscriber:
             return None
 
         try:
-            # Receive multipart message [topic, data]
-            frames = await self._socket.recv_multipart()
+            # Receive multipart message [topic, header, metadata, *buffers]
+            frames = await self._socket.recv_multipart(copy=False)
 
-            if len(frames) != 2:
+            if len(frames) < 2:
                 logger.warning(f"Unexpected frame count: {len(frames)}")
                 return None
 
-            # Parse the message
-            _topic_bytes, data = frames
-            message, header = self.message_type.from_bytes(data)
+            payload_frames = frames[1:]
+            if len(payload_frames) == 1:
+                raw_payload = (
+                    memoryview(payload_frames[0].buffer)
+                    if hasattr(payload_frames[0], "buffer")
+                    else payload_frames[0]
+                )
+                message, header = self.message_type.from_bytes(raw_payload)
+            else:
+                message, header = self.message_type.from_frames(payload_frames)
 
             self._receive_count += 1
             self._last_receive_time = time.time()

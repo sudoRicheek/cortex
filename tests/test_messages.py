@@ -80,6 +80,23 @@ class TestMessageBase:
         assert restored.name == original.name
         assert header.fingerprint == RoundtripMsg.fingerprint()
 
+    def test_message_frame_roundtrip(self):
+        """Messages should roundtrip through the frame transport path."""
+
+        @dataclass
+        class FrameMsg(Message):
+            value: int
+            data: np.ndarray
+
+        original = FrameMsg(value=7, data=np.arange(12, dtype=np.float32).reshape(3, 4))
+        frames = original.to_frames()
+
+        restored, header = FrameMsg.from_frames(frames)
+
+        assert restored.value == original.value
+        np.testing.assert_array_equal(restored.data, original.data)
+        assert header.fingerprint == FrameMsg.fingerprint()
+
     def test_message_decode(self):
         """Messages should decode without knowing type."""
 
