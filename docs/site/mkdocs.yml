@@ -131,9 +131,7 @@ nav:
       - guides/performance-tuning.md
       - guides/benchmarks.md
       - guides/debugging.md
-  - Design notes:
-      - design-review.md
-      - critique.md
+  - Critique: critique.md
   - API reference: reference/
 
 extra:
