@@ -26,11 +26,16 @@ def _frame_to_bytes_like(frame: object) -> bytes | memoryview:
 
 
 class MessageType:
-    """
-    Registry for message types by fingerprint.
+    """Registry mapping 64-bit fingerprints to ``Message`` subclasses.
 
-    This allows automatic deserialization based on the 64-bit fingerprint
-    sent with each message.
+    Populated automatically via :meth:`Message.__init_subclass__`. Used by
+    :meth:`Message.decode` to dispatch an incoming byte stream to the right
+    concrete class based on the fingerprint in its header.
+
+    Example:
+        >>> from cortex.messages.standard import ArrayMessage
+        >>> MessageType.get(ArrayMessage.fingerprint()) is ArrayMessage
+        True
     """
 
     _registry: ClassVar[dict[int, type["Message"]]] = {}
@@ -60,15 +65,19 @@ class MessageType:
 
 @dataclass
 class MessageHeader:
-    """
-    Header for all Cortex messages.
+    """Fixed-size 24-byte header prepended to every Cortex message.
 
-    Contains metadata that is sent with every message.
+    Layout (big-endian): ``fingerprint u64 | timestamp_ns u64 | sequence u64``.
+
+    Attributes:
+        fingerprint: 64-bit type identifier. See :func:`cortex.utils.hashing.compute_fingerprint`.
+        timestamp_ns: Wall-clock nanoseconds at publish time (``time.time_ns()``).
+        sequence: Per-process, per-message-type monotonic counter.
     """
 
-    fingerprint: int  # 64-bit type identifier
-    timestamp_ns: int  # Nanosecond timestamp
-    sequence: int  # Sequence number
+    fingerprint: int
+    timestamp_ns: int
+    sequence: int
 
     def to_bytes(self) -> bytes:
         """Serialize header to bytes (24 bytes fixed size)."""

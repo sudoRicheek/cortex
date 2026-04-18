@@ -61,19 +61,21 @@ class BaseExecutor(ABC):
 
 
 class AsyncExecutor(BaseExecutor):
-    """
-    Executor that runs an async function as fast as possible.
+    """Runs an async callable in a tight loop, yielding to the event loop.
 
-    Yields to the event loop between executions to allow other
-    coroutines to run.
+    Used by :class:`cortex.core.subscriber.Subscriber` to drive its
+    receive → decode → dispatch loop. Exceptions are logged and the loop
+    continues; only :class:`asyncio.CancelledError` stops it.
 
     Example:
+        ```python
         async def process_data():
             data = await get_data()
             await handle(data)
 
         executor = AsyncExecutor(process_data)
         await executor.run()
+        ```
     """
 
     async def _run_impl(self, *args, **kwargs) -> None:
@@ -90,18 +92,21 @@ class AsyncExecutor(BaseExecutor):
 
 
 class RateExecutor(BaseExecutor):
-    """
-    Executor that runs an async function at a constant rate.
+    """Runs an async callable at a target rate in Hz.
 
-    Provides precise timing for periodic execution of async callbacks.
-    Uses cooperative multitasking - ideal for I/O-bound workloads.
+    Uses ``time.perf_counter`` for scheduling and catches up on overruns by
+    advancing ``next_exec_time`` instead of firing back-to-back. Dropped
+    ticks are **not** reported — suitable for telemetry and periodic I/O,
+    but not for hard real-time control without external monitoring.
 
     Example:
+        ```python
         async def my_callback():
             print("tick")
 
         executor = RateExecutor(my_callback, rate_hz=10.0)
         await executor.run()
+        ```
     """
 
     def __init__(self, func: AsyncCallback, rate_hz: float):

@@ -25,21 +25,29 @@ logger = logging.getLogger("cortex.subscriber")
 
 
 class Subscriber:
-    """
-    Subscriber for receiving messages on a topic.
+    """Receives typed messages on a topic from a ZMQ SUB socket.
 
-    Uses ZeroMQ SUB socket over IPC for efficient local communication.
-    Automatically discovers the topic using the discovery daemon.
+    On construction, the subscriber performs a non-blocking lookup against
+    the discovery daemon. If the topic already has a publisher it connects
+    immediately; otherwise it defers and retries with a polling wait inside
+    :meth:`run`.
 
-    Note: Always create subscribers through Node.create_subscriber().
+    When constructed with a ``callback`` the subscriber drives its own
+    receive loop (one task, one callback at a time — see
+    :class:`cortex.core.executor.AsyncExecutor`). Without a callback the
+    subscriber is passive and the caller polls via :meth:`receive`.
+
+    Always create via :meth:`Node.create_subscriber`.
 
     Example:
+        ```python
         async def callback(msg, header):
             print(f"Received: {msg}")
 
         async with Node("my_node") as node:
             node.create_subscriber("/topic", MyMsg, callback)
             await node.run()
+        ```
     """
 
     def __init__(

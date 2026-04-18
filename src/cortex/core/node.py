@@ -22,30 +22,33 @@ logger = logging.getLogger("cortex.node")
 
 
 class Node:
-    """
-    A node in the Cortex communication graph.
+    """User-facing composition unit that owns publishers, subscribers, and timers.
 
-    Nodes manage a collection of publishers and subscribers using asyncio
-    for cooperative multitasking.
+    A node bundles a shared :class:`zmq.asyncio.Context`, a collection of
+    :class:`cortex.core.publisher.Publisher` and
+    :class:`cortex.core.subscriber.Subscriber` instances created through it,
+    and any number of periodic timer callbacks.
+
+    :meth:`run` starts every subscriber receive loop and every timer as
+    asyncio tasks and ``gather``s them until cancelled. Use as an async
+    context manager so that :meth:`close` runs on exit and cleans up
+    sockets, tasks, and the shared ZMQ context.
 
     Example:
+        ```python
         class CameraNode(Node):
             def __init__(self):
                 super().__init__("camera_node")
-
-                self.pub = self.create_publisher(
-                    "/camera/image",
-                    ImageMessage
-                )
-
-                self.create_timer(1/30, self.publish_image)
+                self.pub = self.create_publisher("/camera/image", ImageMessage)
+                self.create_timer(1 / 30, self.publish_image)
 
             async def publish_image(self):
-                image = capture_image()
-                self.pub.publish(ImageMessage(data=image))
+                self.pub.publish(ImageMessage(data=capture_image()))
 
-            async def run(self):
-                await super().run()
+        async def main():
+            async with CameraNode() as node:
+                await node.run()
+        ```
     """
 
     def __init__(

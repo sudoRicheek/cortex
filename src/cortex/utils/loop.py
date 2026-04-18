@@ -8,6 +8,8 @@ import asyncio
 import importlib.util
 import logging
 import sys
+from collections.abc import Coroutine
+from typing import Any
 
 logger = logging.getLogger("cortex.loop")
 
@@ -17,18 +19,19 @@ _uvloop_available = (
 )
 
 
-def run(coro, *, debug: bool = False):
-    """
-    Run a coroutine using uvloop if available.
+def run(coro: Coroutine[Any, Any, Any], *, debug: bool = False) -> Any:
+    """Run a coroutine, preferring ``uvloop`` when available.
 
-    This is a replacement for asyncio.run() that uses uvloop on Unix.
+    Drop-in replacement for :func:`asyncio.run`. On Unix with ``uvloop``
+    installed, this yields noticeably lower tail latency on high-rate
+    small-message workloads.
 
     Args:
-        coro: Coroutine to run
-        debug: Enable debug mode
+        coro: The top-level coroutine to run to completion.
+        debug: Pass through to the event loop's ``debug`` flag.
 
     Returns:
-        The result of the coroutine
+        Whatever ``coro`` returns.
     """
     if _uvloop_available:
         import uvloop

@@ -22,11 +22,19 @@ logger = logging.getLogger("cortex.publisher")
 
 
 def generate_ipc_address(topic_name: str, node_name: str) -> str:
-    """
-    Generate a IPC address for a topic and node.
+    """Build the deterministic IPC endpoint for a ``(node, topic)`` pair.
 
-    Assumption is that node_name and topic_name form a unique combination.
-    So there are no two publishers with the same node_name publishing the same topic_name.
+    The path lives under ``/tmp/cortex/topics/`` and encodes the node name
+    and topic so that the same pair always produces the same socket file.
+
+    Args:
+        topic_name: Topic path, e.g. ``/camera/image``. Leading slashes are
+            converted to underscores in the filename.
+        node_name: Owning node's name. Must be unique per topic within the
+            host — duplicate pairs would race on the socket file.
+
+    Returns:
+        A ``ipc://...`` URI suitable for :func:`zmq.Socket.bind`.
     """
     # Create a safe filename from topic name and node name
     safe_name = node_name + "__" + topic_name.replace("/", "_").lstrip("_")
@@ -39,19 +47,29 @@ def generate_ipc_address(topic_name: str, node_name: str) -> str:
 
 
 class Publisher:
-    """
-    Publisher for sending messages on a topic.
+    """Sends typed messages on a topic over a ZMQ PUB socket.
 
-    Uses ZeroMQ PUB socket over IPC for efficient local communication.
-    Automatically registers with the discovery daemon.
+    On construction the publisher binds its own IPC socket, registers the
+    ``(topic, address, fingerprint)`` triple with the discovery daemon, and
+    becomes ready. :meth:`publish` is synchronous and non-blocking by default
+    — if the send queue is full the message is dropped and ``False`` is
+    returned.
 
-    Note: Always create publishers through Node.create_publisher().
+    Always create via :meth:`Node.create_publisher`; that path shares the
+    node's async context and tracks the publisher for clean shutdown.
+
+    Note:
+        ``zmq.PUB`` sockets are **not thread-safe**. Do not call
+        :meth:`publish` concurrently from multiple threads or tasks on the
+        same :class:`Publisher` instance.
 
     Example:
+        ```python
         async with Node("camera_node") as node:
             pub = node.create_publisher("/camera/image", ImageMessage)
             pub.publish(ImageMessage(data=image_array))
             await node.run()
+        ```
     """
 
     def __init__(
@@ -154,18 +172,22 @@ class Publisher:
             logger.warning(f"Could not connect to discovery daemon: {e}")
 
     def publish(self, message: Message, flags: int = zmq.NOBLOCK) -> bool:
-        """
-        Publish a message (non-blocking).
+        """Serialize and send ``message`` on this topic.
+
+        Uses the frame-aware transport path so large NumPy / PyTorch buffers
+        ride as separate ZMQ frames (zero-copy handoff).
 
         Args:
-            message: The message to publish (must match message_type)
-            flags: ZMQ flags for sending (default: NOBLOCK)
+            message: Instance whose class matches :attr:`message_type`.
+            flags: ZMQ send flags. Default :data:`zmq.NOBLOCK` — drop on
+                high-water-mark rather than block the caller.
 
         Returns:
-            True if the message was sent successfully
+            ``True`` if ZMQ accepted the message; ``False`` if the queue was
+            full (``zmq.Again``) or another send error was logged.
 
         Raises:
-            TypeError: If message type doesn't match
+            TypeError: If ``type(message)`` does not match :attr:`message_type`.
         """
         if not isinstance(message, self.message_type):
             raise TypeError(

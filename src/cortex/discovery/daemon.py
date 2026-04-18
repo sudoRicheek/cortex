@@ -31,10 +31,15 @@ DEFAULT_DISCOVERY_ADDRESS = "ipc:///tmp/cortex/discovery.sock"
 
 
 class DiscoveryDaemon:
-    """
-    Discovery daemon that maintains topic registry.
+    """Long-lived REP service that maps topic names to ZMQ endpoints.
 
-    Uses ZMQ REP socket to handle requests from publishers and subscribers.
+    Publishers register their topic on startup; subscribers look up the
+    endpoint and then connect directly. The daemon is **not** on the data
+    path — it sees control traffic only.
+
+    Single-threaded by design. Requests are handled one at a time with a
+    1-second ``RCVTIMEO`` so the loop can observe ``_running`` for clean
+    shutdown.
     """
 
     def __init__(

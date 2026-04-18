@@ -25,11 +25,23 @@ logger = logging.getLogger("cortex.discovery.client")
 
 
 class DiscoveryClient:
-    """
-    Client for interacting with the discovery daemon.
+    """Synchronous REQ client for the Cortex discovery daemon.
 
-    Provides methods for registering, unregistering, and looking up topics.
-    Uses synchronous ZMQ since discovery is typically done at startup.
+    Built around a single ``zmq.REQ`` socket. Because REQ sockets get stuck
+    in a bad state after a missed reply (they block further sends), this
+    client transparently closes and recreates the socket on every timeout
+    via :meth:`_reconnect`.
+
+    Used internally by :class:`cortex.core.publisher.Publisher` at registration
+    time and by :class:`cortex.core.subscriber.Subscriber` for topic lookup.
+    User code rarely needs to instantiate this class directly.
+
+    Example:
+        ```python
+        client = DiscoveryClient()
+        info = client.wait_for_topic("/camera/image", timeout=5.0)
+        print(info.address if info else "not found")
+        ```
     """
 
     def __init__(

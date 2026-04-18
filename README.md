@@ -61,9 +61,6 @@ The discovery daemon must be running for publishers and subscribers to find each
 
 ```bash
 # Start the discovery daemon
-python -m cortex.discovery.daemon
-
-# Or use the installed command
 cortex-discovery
 ```
 
