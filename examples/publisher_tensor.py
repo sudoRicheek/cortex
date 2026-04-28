@@ -23,7 +23,8 @@ except ImportError:
     exit(1)
 
 import cortex
-from cortex import Node, TensorMessage
+from cortex import Node
+from cortex.messages.standard import TensorMessage
 
 
 class TensorPublisherNode(Node):

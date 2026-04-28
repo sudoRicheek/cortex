@@ -249,6 +249,21 @@ class DiscoveryClient:
 
         return None
 
+    def ping(self) -> bool:
+        """Check whether the discovery daemon is reachable.
+
+        Returns:
+            True if the daemon responded with OK within the configured
+            timeout/retries, False otherwise.
+        """
+        request = DiscoveryRequest(command=DiscoveryCommand.PING)
+        try:
+            response = self._send_request(request)
+        except Exception as e:
+            logger.debug(f"Ping failed: {e}")
+            return False
+        return response.status == DiscoveryStatus.OK
+
     def list_topics(self) -> list[TopicInfo]:
         """
         List all registered topics.

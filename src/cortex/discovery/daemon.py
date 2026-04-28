@@ -152,6 +152,8 @@ class DiscoveryDaemon:
             return self._handle_lookup(request)
         elif request.command == DiscoveryCommand.LIST_TOPICS:
             return self._handle_list()
+        elif request.command == DiscoveryCommand.PING:
+            return self._handle_ping()
         elif request.command == DiscoveryCommand.SHUTDOWN:
             return self._handle_shutdown()
         else:
@@ -250,6 +252,10 @@ class DiscoveryDaemon:
         logger.info("LIST topics: %d registered", len(topics))
 
         return DiscoveryResponse(status=DiscoveryStatus.OK, topics=topics)
+
+    def _handle_ping(self) -> DiscoveryResponse:
+        """Handle ping request — used by clients to verify daemon liveness."""
+        return DiscoveryResponse(status=DiscoveryStatus.OK, message="pong")
 
     def _handle_shutdown(self) -> DiscoveryResponse:
         """Handle shutdown request."""

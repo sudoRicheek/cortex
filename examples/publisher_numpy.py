@@ -19,7 +19,8 @@ Usage:
 import numpy as np
 
 import cortex
-from cortex import ArrayMessage, Node
+from cortex import Node
+from cortex.messages.standard import ArrayMessage
 
 
 class ArrayPublisherNode(Node):

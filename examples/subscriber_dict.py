@@ -20,8 +20,9 @@ import asyncio
 import contextlib
 
 import cortex
-from cortex import DictMessage, Node
+from cortex import Node
 from cortex.messages.base import MessageHeader
+from cortex.messages.standard import DictMessage
 
 
 class DictSubscriberNode(Node):

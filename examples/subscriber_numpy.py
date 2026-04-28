@@ -17,8 +17,9 @@ Usage:
 """
 
 import cortex
-from cortex import ArrayMessage, Node
+from cortex import Node
 from cortex.messages.base import MessageHeader
+from cortex.messages.standard import ArrayMessage
 
 
 async def on_array_received(msg: ArrayMessage, header: MessageHeader):

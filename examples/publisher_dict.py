@@ -23,7 +23,8 @@ import time
 import numpy as np
 
 import cortex
-from cortex import DictMessage, Node
+from cortex import Node
+from cortex.messages.standard import DictMessage
 
 
 class DictPublisherNode(Node):
