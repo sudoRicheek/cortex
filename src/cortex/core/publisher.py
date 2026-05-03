@@ -121,6 +121,12 @@ class Publisher:
         self._publish_count = 0
         self._last_publish_time: float | None = None
 
+        # Per-publisher monotonic sequence counter. Subscribers infer drops
+        # by tracking gaps in this number per ``(publisher_node, fingerprint)``
+        # pair, so it must be one-counter-per-publisher rather than the
+        # class-level counter that used to live on ``Message``.
+        self._sequence: int = 0
+
         # Initialize
         self._setup_socket()
         if auto_register:
@@ -197,9 +203,13 @@ class Publisher:
         try:
             # Send with topic name as first frame for filtering.
             # Message payload uses frame-aware transport to keep large buffers
-            # out of the metadata blob.
+            # out of the metadata blob. Sequence numbers come from this
+            # publisher (not the class-level fallback) so receivers can
+            # detect drops per-source.
+            sequence = self._sequence
+            self._sequence += 1
             self._socket.send_multipart(
-                [self._topic_bytes, *message.to_frames()],
+                [self._topic_bytes, *message.to_frames(sequence=sequence)],
                 flags=flags,
             )
 
