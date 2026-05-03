@@ -11,6 +11,7 @@ Cortex is a pub/sub communication layer built on ZeroMQ IPC. Nodes publish typed
 - **Typed messages** with 64-bit fingerprint verification — no silent type mismatches
 - **Zero-copy frames** for NumPy arrays and PyTorch tensors over IPC
 - **uvloop-backed async** for low tail latency on Linux/macOS
+- **Sync mode** for fast pub-sub and free-threaded python314t
 - **Simple API**: `Node`, `Publisher`, `Subscriber`, rate-based `Executor`
 
 ```
@@ -35,30 +36,55 @@ pip install -e ".[torch]"   # + PyTorch
 
 ## Quick Start
 
+Run each block in its own terminal.
+
 ```bash
-cortex-discovery   # terminal 1: start the discovery daemon
+# terminal 1
+cortex-discovery
 ```
 
 ```python
-# publisher.py
+# terminal 2 — publisher.py
 import numpy as np
-from cortex import Node, ArrayMessage
+import cortex
+from cortex import Node
+from cortex.messages.standard import ArrayMessage
 
-node = Node("sensor")
-pub  = node.create_publisher("/sensor/data", ArrayMessage)
-pub.publish(ArrayMessage(data=np.random.randn(640, 480, 3).astype("f4"), name="frame"))
+async def main():
+    async with Node("sensor") as node:
+        pub = node.create_publisher("/sensor/data", ArrayMessage)
+        i = 0
+
+        async def tick():
+            nonlocal i
+            pub.publish(ArrayMessage(data=np.random.randn(64, 64).astype("f4"), name=f"frame_{i}"))
+            i += 1
+
+        node.create_timer(1 / 10, tick)
+        await node.run()
+
+cortex.run(main())
 ```
 
 ```python
-# subscriber.py
-from cortex import Node, ArrayMessage
+# terminal 3 — subscriber.py
+import cortex
+from cortex import Node
+from cortex.messages.standard import ArrayMessage
 
-def on_msg(msg: ArrayMessage, header):
-    print(f"got {msg.name}: {msg.data.shape}")
+count = 0
 
-node = Node("proc")
-node.create_subscriber("/sensor/data", ArrayMessage, callback=on_msg)
-node.spin()
+async def on_msg(msg, header):
+    global count
+    count += 1
+    print(f"[{count}] got {msg.name}: {msg.data.shape}")
+
+async def main():
+    async with Node("proc") as node:
+        node.create_subscriber("/sensor/data", ArrayMessage, callback=on_msg)
+        await node.run()
+
+cortex.run(main())
 ```
 
 Custom message types, rate-based executors, multi-node systems — see the **[docs](https://sudoRicheek.github.io/cortex/)**.
