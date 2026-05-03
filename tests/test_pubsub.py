@@ -77,6 +77,38 @@ class TestPublisher:
 
         pub.close()
 
+    def test_per_publisher_sequence_counter(self, discovery_daemon, discovery_address):
+        """Two publishers of the same message type must not interleave sequences.
+
+        Each Publisher owns its own counter; the counter starts at 0 and
+        advances by one per successful publish, independently of any other
+        Publisher in the process.
+        """
+        pub_a = Publisher(
+            topic_name="/test/seq_a",
+            message_type=SampleMessage,
+            node_name="seq_node_a",
+            discovery_address=discovery_address,
+        )
+        pub_b = Publisher(
+            topic_name="/test/seq_b",
+            message_type=SampleMessage,
+            node_name="seq_node_b",
+            discovery_address=discovery_address,
+        )
+
+        for i in range(5):
+            assert pub_a.publish(SampleMessage(value=i, name="a"))
+        for i in range(3):
+            assert pub_b.publish(SampleMessage(value=i, name="b"))
+
+        # ``_sequence`` is the next-to-emit value, so after N publishes it == N.
+        assert pub_a._sequence == 5
+        assert pub_b._sequence == 3
+
+        pub_a.close()
+        pub_b.close()
+
     def test_publisher_type_checking(self, discovery_daemon, discovery_address):
         """Publisher should reject wrong message types."""
         pub = Publisher(

@@ -129,6 +129,22 @@ class TestDiscoveryClient:
 
         client.close()
 
+    def test_ping_alive(self, discovery_daemon, discovery_address):
+        """Ping should return True when the daemon is reachable."""
+        client = DiscoveryClient(discovery_address=discovery_address)
+        assert client.ping() is True
+        client.close()
+
+    def test_ping_dead(self):
+        """Ping should return False when no daemon is listening."""
+        client = DiscoveryClient(
+            discovery_address="ipc:///tmp/cortex/discovery_no_daemon.sock",
+            timeout_ms=200,
+            retries=1,
+        )
+        assert client.ping() is False
+        client.close()
+
     def test_lookup_nonexistent(self, discovery_daemon, discovery_address):
         """Lookup of nonexistent topic should return None."""
         client = DiscoveryClient(discovery_address=discovery_address)

@@ -114,7 +114,10 @@ class Message:
             intensity: float = 1.0
     """
 
-    # Class-level sequence counter
+    # Class-level sequence counter, kept as a fallback for callers that
+    # serialize a message directly via ``to_bytes``/``to_frames`` without
+    # going through ``Publisher``. Real per-publisher gap detection lives
+    # on :class:`cortex.core.publisher.Publisher` (one counter per topic).
     _sequence_counter: ClassVar[int] = 0
     _field_names_cache: ClassVar[tuple[str, ...] | None] = None
 
@@ -132,7 +135,11 @@ class Message:
 
     @classmethod
     def _next_sequence(cls) -> int:
-        """Get the next sequence number."""
+        """Get the next sequence number on the class-level counter.
+
+        Used as a fallback when no explicit ``sequence`` is supplied to
+        :meth:`to_bytes` / :meth:`to_frames`.
+        """
         seq = cls._sequence_counter
         cls._sequence_counter += 1
         return seq
@@ -160,15 +167,22 @@ class Message:
             )
         return cls(**dict(zip(field_names, values, strict=True)))
 
-    def _build_header(self) -> MessageHeader:
-        """Create a message header for the current instance."""
+    def _build_header(self, sequence: int | None = None) -> MessageHeader:
+        """Create a message header for the current instance.
+
+        Args:
+            sequence: Explicit sequence number (typically supplied by the
+                owning :class:`Publisher`). When ``None``, falls back to
+                the class-level counter so direct ``to_bytes`` / ``to_frames``
+                calls keep working in tests and ad-hoc serialization.
+        """
         return MessageHeader(
             fingerprint=self.fingerprint(),
             timestamp_ns=time.time_ns(),
-            sequence=self._next_sequence(),
+            sequence=self._next_sequence() if sequence is None else sequence,
         )
 
-    def to_bytes(self) -> bytes:
+    def to_bytes(self, sequence: int | None = None) -> bytes:
         """
         Serialize the message to bytes.
 
@@ -176,18 +190,18 @@ class Message:
         - 24 bytes: header (fingerprint, timestamp, sequence)
         - remaining: serialized field data
         """
-        header_bytes = self._build_header().to_bytes()
+        header_bytes = self._build_header(sequence).to_bytes()
         data_bytes = serialize_message_values(self._field_values())
         return header_bytes + data_bytes
 
-    def to_frames(self) -> list[object]:
+    def to_frames(self, sequence: int | None = None) -> list[object]:
         """Serialize the message into transport frames.
 
         The first frame is always the fixed-size header. The second frame holds
         packed metadata, and any remaining frames are raw out-of-band buffers.
         """
         return [
-            self._build_header().to_bytes(),
+            self._build_header(sequence).to_bytes(),
             *serialize_message_frames(self._field_values()),
         ]
 

@@ -23,8 +23,9 @@ except ImportError:
     exit(1)
 
 import cortex
-from cortex import Node, TensorMessage
+from cortex import Node
 from cortex.messages.base import MessageHeader
+from cortex.messages.standard import TensorMessage
 
 
 async def on_tensor_received(msg: TensorMessage, header: MessageHeader):

@@ -94,10 +94,12 @@ class AsyncExecutor(BaseExecutor):
 class RateExecutor(BaseExecutor):
     """Runs an async callable at a target rate in Hz.
 
-    Uses ``time.perf_counter`` for scheduling and catches up on overruns by
-    advancing ``next_exec_time`` instead of firing back-to-back. Dropped
-    ticks are **not** reported — suitable for telemetry and periodic I/O,
-    but not for hard real-time control without external monitoring.
+    Uses ``time.perf_counter`` for scheduling. If a callback overruns the
+    nominal period, ``next_exec_time`` stays on the fixed grid (only
+    ``+ interval`` per invocation); the loop then sleeps 0 until the clock
+    catches up, so **missed ticks are not skipped**. This matches the
+    historical neurosim ``ZMQNODE`` constant-rate executor behavior and is
+    appropriate for simulation stepping.
 
     Example:
         ```python
@@ -123,9 +125,11 @@ class RateExecutor(BaseExecutor):
 
     async def _run_impl(self, *args, **kwargs) -> None:
         """
-        Run a function at constant rate with precise timing.
+        Run a function on a fixed ``perf_counter`` grid at ``rate_hz``.
 
-        Executions happen at exact intervals regardless of execution time.
+        When the callback is slow, ticks are not skipped: ``next_exec_time``
+        advances by one interval per invocation and the loop yields until
+        the clock catches up (zero-length sleeps while behind).
         """
         next_exec_time = time.perf_counter()
 
@@ -136,10 +140,6 @@ class RateExecutor(BaseExecutor):
                 if current_time >= next_exec_time:
                     await self.func(*args, **kwargs)
                     next_exec_time += self.interval
-
-                    # If we've fallen behind, catch up
-                    if next_exec_time < current_time:
-                        next_exec_time = current_time + self.interval
 
                 await asyncio.sleep(0)  # Yield to event loop
             except asyncio.CancelledError:
