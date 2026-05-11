@@ -13,6 +13,8 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(yaml-cpp REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 
@@ -62,6 +64,39 @@ ament_target_dependencies(cortex_ros2_bridge_adapters PUBLIC
   builtin_interfaces
 )
 
+# Components library — registered with rclcpp_components so the
+# component_container_mt executable can load it as composable nodes.
+add_library(cortex_ros2_bridge_components SHARED
+  src/qos.cpp
+  src/binding_factory.cpp
+  src/cortex_to_ros2_node.cpp
+  src/ros2_to_cortex_node.cpp
+)
+target_include_directories(cortex_ros2_bridge_components PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+target_link_libraries(cortex_ros2_bridge_components PUBLIC
+  cortex_ros2_bridge_config
+  cortex_ros2_bridge_adapters
+  cortex_wire::cortex_wire
+)
+ament_target_dependencies(cortex_ros2_bridge_components PUBLIC
+  rclcpp
+  rclcpp_components
+  std_msgs
+  builtin_interfaces
+)
+
+rclcpp_components_register_node(cortex_ros2_bridge_components
+  PLUGIN "cortex_ros2_bridge::CortexToRos2Bridge"
+  EXECUTABLE cortex_to_ros2
+)
+rclcpp_components_register_node(cortex_ros2_bridge_components
+  PLUGIN "cortex_ros2_bridge::Ros2ToCortexBridge"
+  EXECUTABLE ros2_to_cortex
+)
+
 # ---- install --------------------------------------------------------------
 
 install(DIRECTORY include/ DESTINATION include)
@@ -72,12 +107,9 @@ install(TARGETS cortex_ros2_bridge_config
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-# cortex_ros2_bridge_adapters is internal to this package: consumed by the
-# bridge components in PR4 but not exported downstream (it transitively
-# depends on cortex_wire which is brought in via add_subdirectory and is
-# therefore not installable from here). Re-evaluate when a downstream
-# package needs to link against the adapter library directly.
-install(TARGETS cortex_ros2_bridge_adapters
+# Internal-to-this-package libraries (not exported downstream because they
+# transitively pin cortex_wire which is brought in via add_subdirectory).
+install(TARGETS cortex_ros2_bridge_adapters cortex_ros2_bridge_components
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -88,7 +120,7 @@ install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 ament_export_include_directories(include)
 ament_export_targets(export_cortex_ros2_bridge HAS_LIBRARY_TARGET)
-ament_export_dependencies(yaml-cpp std_msgs builtin_interfaces)
+ament_export_dependencies(yaml-cpp rclcpp rclcpp_components std_msgs builtin_interfaces)
 
 # ---- tests ----------------------------------------------------------------
 
@@ -96,9 +128,7 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
 
-  # Skip the opinionated style linters; keep the substantive ones (cppcheck,
-  # lint_cmake, xmllint). Style is enforced by clang-format separately if/when
-  # we add one.
+  # Skip the opinionated style linters; keep cppcheck, lint_cmake, xmllint.
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   set(ament_cmake_uncrustify_FOUND TRUE)
@@ -114,6 +144,17 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_primitives test/test_primitives.cpp)
   target_link_libraries(test_primitives cortex_ros2_bridge_adapters)
+
+  ament_add_gtest(test_qos test/test_qos.cpp)
+  target_link_libraries(test_qos cortex_ros2_bridge_components)
+
+  ament_add_gtest(test_binding_factory test/test_binding_factory.cpp)
+  target_link_libraries(test_binding_factory cortex_ros2_bridge_components)
+
+  # End-to-end smoke test: spins up a mock discovery daemon + a Python-style
+  # publisher / subscriber, exercises both components, and asserts delivery.
+  ament_add_gtest(test_components_e2e test/test_components_e2e.cpp)
+  target_link_libraries(test_components_e2e cortex_ros2_bridge_components)
 endif()
 
 ament_package()
