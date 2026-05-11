@@ -25,7 +25,7 @@ find_package(geometry_msgs REQUIRED)
 # cortex_wire_cpp has been installed).
 find_package(cortex_wire_cpp QUIET)
 if(NOT cortex_wire_cpp_FOUND)
-  set(_cwc_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../cortex_wire_cpp")
+  set(_cwc_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../../cortex_wire_cpp")
   if(EXISTS "${_cwc_dir}/CMakeLists.txt")
     message(STATUS "cortex_wire_cpp: using in-tree source at ${_cwc_dir}")
     set(CORTEX_WIRE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -140,12 +140,16 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   find_package(ament_cmake_gtest REQUIRED)
 
-  # Skip the opinionated style linters; keep cppcheck, lint_cmake, xmllint.
+  # Skip the opinionated style linters; keep cppcheck and lint_cmake.
+  # xmllint is also disabled because it fetches the package.xml XSD over the
+  # network at test time, which fails on offline builders; package.xml is
+  # already validated structurally by ament_cmake_core at configure time.
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
   set(ament_cmake_uncrustify_FOUND TRUE)
   set(ament_cmake_pep257_FOUND TRUE)
   set(ament_cmake_flake8_FOUND TRUE)
+  set(ament_cmake_xmllint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 
   ament_add_gtest(test_config test/test_config.cpp)

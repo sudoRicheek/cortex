@@ -42,15 +42,9 @@ The bridge ships as two composable rclcpp nodes — one per direction — that c
 From a colcon workspace that contains this package under `src/`:
 
 ```bash
-colcon build --packages-select cortex_ros2_bridge
-source install/setup.bash
-```
-
-On Anaconda-based ROS containers (where the default `python3` lacks `catkin_pkg`), point CMake at the system Python:
-
-```bash
 colcon build --packages-select cortex_ros2_bridge \
   --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
 ```
 
 The package also includes the test suite:
