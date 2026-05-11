@@ -11,7 +11,13 @@
 #include <string>
 #include <string_view>
 
+#include "cortex_ros2_bridge/adapters/arrays.hpp"
+#include "cortex_ros2_bridge/adapters/image.hpp"
+#include "cortex_ros2_bridge/adapters/pointcloud.hpp"
+#include "cortex_ros2_bridge/adapters/pose.hpp"
 #include "cortex_ros2_bridge/adapters/primitives.hpp"
+#include "cortex_ros2_bridge/adapters/tensor.hpp"
+#include "cortex_ros2_bridge/adapters/transform.hpp"
 #include "cortex_ros2_bridge/qos.hpp"
 
 namespace cortex_ros2_bridge
@@ -23,8 +29,17 @@ namespace
 void ensure_primitives_registered()
 {
   static bool done = []() {
-      adapters::register_primitives(AdapterRegistry::global());
-      register_primitive_bindings(BindingFactoryRegistry::global());
+      auto & ar = AdapterRegistry::global();
+      auto & br = BindingFactoryRegistry::global();
+      adapters::register_primitives(ar);
+      adapters::register_array_adapters(ar);
+      adapters::register_image_adapters(ar);
+      adapters::register_pointcloud_adapters(ar);
+      adapters::register_pose_adapters(ar);
+      adapters::register_transform_adapters(ar);
+      adapters::register_tensor_adapters(ar);
+      register_primitive_bindings(br);
+      register_standard_bindings(br);
       return true;
     }();
   (void)done;

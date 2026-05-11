@@ -17,6 +17,8 @@ find_package(rclcpp REQUIRED)
 find_package(rclcpp_components REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 # cortex_wire_cpp — pure-CMake library, prefer installed package; fall back to
 # in-tree add_subdirectory for monorepo dev (when this package is built before
@@ -50,6 +52,12 @@ target_link_libraries(cortex_ros2_bridge_config PUBLIC yaml-cpp)
 add_library(cortex_ros2_bridge_adapters SHARED
   src/registry.cpp
   src/adapters/primitives.cpp
+  src/adapters/arrays.cpp
+  src/adapters/image.cpp
+  src/adapters/pointcloud.cpp
+  src/adapters/pose.cpp
+  src/adapters/transform.cpp
+  src/adapters/tensor.cpp
 )
 target_include_directories(cortex_ros2_bridge_adapters PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -62,6 +70,8 @@ target_link_libraries(cortex_ros2_bridge_adapters PUBLIC
 ament_target_dependencies(cortex_ros2_bridge_adapters PUBLIC
   std_msgs
   builtin_interfaces
+  sensor_msgs
+  geometry_msgs
 )
 
 # Components library — registered with rclcpp_components so the
@@ -86,6 +96,8 @@ ament_target_dependencies(cortex_ros2_bridge_components PUBLIC
   rclcpp_components
   std_msgs
   builtin_interfaces
+  sensor_msgs
+  geometry_msgs
 )
 
 rclcpp_components_register_node(cortex_ros2_bridge_components
@@ -120,7 +132,7 @@ install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
 ament_export_include_directories(include)
 ament_export_targets(export_cortex_ros2_bridge HAS_LIBRARY_TARGET)
-ament_export_dependencies(yaml-cpp rclcpp rclcpp_components std_msgs builtin_interfaces)
+ament_export_dependencies(yaml-cpp rclcpp rclcpp_components std_msgs builtin_interfaces sensor_msgs geometry_msgs)
 
 # ---- tests ----------------------------------------------------------------
 
@@ -145,6 +157,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_primitives test/test_primitives.cpp)
   target_link_libraries(test_primitives cortex_ros2_bridge_adapters)
 
+  ament_add_gtest(test_standard_adapters test/test_standard_adapters.cpp)
+  target_link_libraries(test_standard_adapters cortex_ros2_bridge_components)
+
   ament_add_gtest(test_qos test/test_qos.cpp)
   target_link_libraries(test_qos cortex_ros2_bridge_components)
 
@@ -155,6 +170,11 @@ if(BUILD_TESTING)
   # publisher / subscriber, exercises both components, and asserts delivery.
   ament_add_gtest(test_components_e2e test/test_components_e2e.cpp)
   target_link_libraries(test_components_e2e cortex_ros2_bridge_components)
+
+  # PR8: intra-process composability proof — verifies bridge-published
+  # messages reach a colocated subscriber via rclcpp's intra-process path.
+  ament_add_gtest(test_intra_process test/test_intra_process.cpp)
+  target_link_libraries(test_intra_process cortex_ros2_bridge_components)
 endif()
 
 ament_package()

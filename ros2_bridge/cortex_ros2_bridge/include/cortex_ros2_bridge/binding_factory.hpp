@@ -97,6 +97,11 @@ inline bool register_ros2_to_cortex_binding(
 // in both directions.
 std::size_t register_primitive_bindings(BindingFactoryRegistry & reg);
 
+// Registers binding factories for every ROS 2 type used by the standard
+// catalogue beyond primitives (multi-array, image, pointcloud, pose,
+// transform). Idempotent — repeated calls add nothing.
+std::size_t register_standard_bindings(BindingFactoryRegistry & reg);
+
 }  // namespace cortex_ros2_bridge
 
 #endif  // CORTEX_ROS2_BRIDGE__BINDING_FACTORY_HPP_
