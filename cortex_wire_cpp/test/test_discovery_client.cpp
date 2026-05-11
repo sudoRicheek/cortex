@@ -1,5 +1,5 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/discovery_client.hpp"
+#include "cortex_wire/discovery_client.hpp"
 
 #include <gtest/gtest.h>
 #include <msgpack.hpp>
@@ -12,11 +12,11 @@
 #include <thread>
 #include <vector>
 
-using cortex_ros2_bridge::cortex_wire::DiscoveryClient;
-using cortex_ros2_bridge::cortex_wire::DiscoveryCommand;
-using cortex_ros2_bridge::cortex_wire::DiscoveryError;
-using cortex_ros2_bridge::cortex_wire::DiscoveryStatus;
-using cortex_ros2_bridge::cortex_wire::TopicInfo;
+using cortex_wire::DiscoveryClient;
+using cortex_wire::DiscoveryCommand;
+using cortex_wire::DiscoveryError;
+using cortex_wire::DiscoveryStatus;
+using cortex_wire::TopicInfo;
 
 namespace
 {

@@ -1,6 +1,6 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#ifndef CORTEX_ROS2_BRIDGE__CORTEX_WIRE__OOB_BUFFER_HPP_
-#define CORTEX_ROS2_BRIDGE__CORTEX_WIRE__OOB_BUFFER_HPP_
+#ifndef CORTEX_WIRE__OOB_BUFFER_HPP_
+#define CORTEX_WIRE__OOB_BUFFER_HPP_
 
 #include <zmq.hpp>
 
@@ -11,7 +11,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {
 
 // Shared, immutable view into a ZMQ multipart frame. The shared_ptr owns the
@@ -156,6 +156,6 @@ private:
   std::size_t offset_ = 0;
 };
 
-}  // namespace cortex_ros2_bridge::cortex_wire
+}  // namespace cortex_wire
 
-#endif  // CORTEX_ROS2_BRIDGE__CORTEX_WIRE__OOB_BUFFER_HPP_
+#endif  // CORTEX_WIRE__OOB_BUFFER_HPP_

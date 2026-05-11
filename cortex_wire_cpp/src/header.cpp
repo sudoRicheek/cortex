@@ -1,9 +1,9 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/header.hpp"
+#include "cortex_wire/header.hpp"
 
 #include <cstring>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {
 
 namespace
@@ -59,4 +59,4 @@ void MessageHeader::to_bytes(void * out) const noexcept
   write_be64(p + 16, sequence);
 }
 
-}  // namespace cortex_ros2_bridge::cortex_wire
+}  // namespace cortex_wire

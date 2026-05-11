@@ -1,12 +1,12 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#ifndef CORTEX_ROS2_BRIDGE__CORTEX_WIRE__HEADER_HPP_
-#define CORTEX_ROS2_BRIDGE__CORTEX_WIRE__HEADER_HPP_
+#ifndef CORTEX_WIRE__HEADER_HPP_
+#define CORTEX_WIRE__HEADER_HPP_
 
 #include <cstddef>
 #include <cstdint>
 #include <stdexcept>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {
 
 // Fixed 24-byte header prepended to every Cortex multipart message, matching
@@ -37,6 +37,6 @@ public:
   using std::runtime_error::runtime_error;
 };
 
-}  // namespace cortex_ros2_bridge::cortex_wire
+}  // namespace cortex_wire
 
-#endif  // CORTEX_ROS2_BRIDGE__CORTEX_WIRE__HEADER_HPP_
+#endif  // CORTEX_WIRE__HEADER_HPP_

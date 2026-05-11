@@ -30,13 +30,13 @@ HEADER_TEMPLATE = """\
 //
 // Regenerate after any change to cortex.messages.standard. CI checks that this
 // file matches the script's output for the installed cortex package.
-#ifndef CORTEX_ROS2_BRIDGE__CORTEX_WIRE__FINGERPRINT_TABLE_HPP_
-#define CORTEX_ROS2_BRIDGE__CORTEX_WIRE__FINGERPRINT_TABLE_HPP_
+#ifndef CORTEX_WIRE__FINGERPRINT_TABLE_HPP_
+#define CORTEX_WIRE__FINGERPRINT_TABLE_HPP_
 
 #include <cstdint>
 #include <string_view>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {{
 
 enum class MessageKind : std::uint32_t
@@ -90,9 +90,9 @@ constexpr std::string_view to_string(MessageKind k) noexcept
   return "<unknown>";
 }}
 
-}}  // namespace cortex_ros2_bridge::cortex_wire
+}}  // namespace cortex_wire
 
-#endif  // CORTEX_ROS2_BRIDGE__CORTEX_WIRE__FINGERPRINT_TABLE_HPP_
+#endif  // CORTEX_WIRE__FINGERPRINT_TABLE_HPP_
 """
 
 
@@ -122,7 +122,6 @@ def main() -> int:
     default_out = (
         Path(__file__).resolve().parent.parent
         / "include"
-        / "cortex_ros2_bridge"
         / "cortex_wire"
         / "fingerprint_table.hpp"
     )

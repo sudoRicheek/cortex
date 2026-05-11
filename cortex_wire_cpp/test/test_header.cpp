@@ -1,5 +1,5 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/header.hpp"
+#include "cortex_wire/header.hpp"
 
 #include <gtest/gtest.h>
 
@@ -7,8 +7,8 @@
 #include <cstdint>
 #include <cstring>
 
-using cortex_ros2_bridge::cortex_wire::MessageHeader;
-using cortex_ros2_bridge::cortex_wire::WireDecodeError;
+using cortex_wire::MessageHeader;
+using cortex_wire::WireDecodeError;
 
 TEST(MessageHeader, SizeIs24Bytes)
 {

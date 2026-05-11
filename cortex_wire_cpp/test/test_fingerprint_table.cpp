@@ -1,17 +1,17 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/fingerprint_table.hpp"
+#include "cortex_wire/fingerprint_table.hpp"
 
 #include <gtest/gtest.h>
 
 #include <set>
 #include <string_view>
 
-using cortex_ros2_bridge::cortex_wire::find_by_fingerprint;
-using cortex_ros2_bridge::cortex_wire::find_by_name;
-using cortex_ros2_bridge::cortex_wire::kFingerprintTable;
-using cortex_ros2_bridge::cortex_wire::kFingerprintTableSize;
-using cortex_ros2_bridge::cortex_wire::MessageKind;
-using cortex_ros2_bridge::cortex_wire::to_string;
+using cortex_wire::find_by_fingerprint;
+using cortex_wire::find_by_name;
+using cortex_wire::kFingerprintTable;
+using cortex_wire::kFingerprintTableSize;
+using cortex_wire::MessageKind;
+using cortex_wire::to_string;
 
 TEST(FingerprintTable, HasExpectedSize)
 {

@@ -1,6 +1,6 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#ifndef CORTEX_ROS2_BRIDGE__CORTEX_WIRE__DISCOVERY_CLIENT_HPP_
-#define CORTEX_ROS2_BRIDGE__CORTEX_WIRE__DISCOVERY_CLIENT_HPP_
+#ifndef CORTEX_WIRE__DISCOVERY_CLIENT_HPP_
+#define CORTEX_WIRE__DISCOVERY_CLIENT_HPP_
 
 #include <zmq.hpp>
 
@@ -11,7 +11,7 @@
 #include <string>
 #include <vector>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {
 
 // Mirrors cortex.discovery.protocol.DiscoveryCommand.
@@ -96,6 +96,6 @@ private:
   zmq::socket_t socket_;
 };
 
-}  // namespace cortex_ros2_bridge::cortex_wire
+}  // namespace cortex_wire
 
-#endif  // CORTEX_ROS2_BRIDGE__CORTEX_WIRE__DISCOVERY_CLIENT_HPP_
+#endif  // CORTEX_WIRE__DISCOVERY_CLIENT_HPP_

@@ -1,5 +1,5 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/metadata.hpp"
+#include "cortex_wire/metadata.hpp"
 
 #include <msgpack.hpp>
 
@@ -7,7 +7,7 @@
 #include <string>
 #include <string_view>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {
 
 namespace
@@ -145,4 +145,111 @@ std::optional<OobDescriptor> DecodedMetadata::as_oob(const msgpack::object & obj
   return desc;
 }
 
-}  // namespace cortex_ros2_bridge::cortex_wire
+// ---- MetadataBuilder ------------------------------------------------------
+
+MetadataBuilder::MetadataBuilder(std::uint32_t field_count)
+: sbuf_(), packer_(sbuf_)
+{
+  packer_.pack_array(field_count);
+}
+
+void MetadataBuilder::pack_nil() {packer_.pack_nil();}
+void MetadataBuilder::pack_bool(bool v) {packer_.pack(v);}
+void MetadataBuilder::pack_int(std::int64_t v) {packer_.pack(v);}
+void MetadataBuilder::pack_uint(std::uint64_t v) {packer_.pack(v);}
+void MetadataBuilder::pack_double(double v) {packer_.pack(v);}
+
+void MetadataBuilder::pack_str(std::string_view s)
+{
+  packer_.pack_str(static_cast<std::uint32_t>(s.size()));
+  packer_.pack_str_body(s.data(), static_cast<std::uint32_t>(s.size()));
+}
+
+void MetadataBuilder::pack_bin(const void * data, std::size_t size)
+{
+  packer_.pack_bin(static_cast<std::uint32_t>(size));
+  packer_.pack_bin_body(static_cast<const char *>(data), static_cast<std::uint32_t>(size));
+}
+
+std::uint32_t MetadataBuilder::add_oob_buffer(const void * data, std::size_t size)
+{
+  const auto idx = static_cast<std::uint32_t>(oob_buffers_.size());
+  const auto * p = static_cast<const std::uint8_t *>(data);
+  oob_buffers_.emplace_back(p, p + size);
+  return idx;
+}
+
+namespace
+{
+
+void pack_shape(msgpack::packer<msgpack::sbuffer> & pk, const std::vector<std::int64_t> & shape)
+{
+  pk.pack_array(static_cast<std::uint32_t>(shape.size()));
+  for (auto d : shape) {
+    if (d < 0) {
+      pk.pack(d);
+    } else {
+      pk.pack(static_cast<std::uint64_t>(d));
+    }
+  }
+}
+
+void pack_str_key(msgpack::packer<msgpack::sbuffer> & pk, std::string_view key)
+{
+  pk.pack_str(static_cast<std::uint32_t>(key.size()));
+  pk.pack_str_body(key.data(), static_cast<std::uint32_t>(key.size()));
+}
+
+void pack_str_pair(
+  msgpack::packer<msgpack::sbuffer> & pk, std::string_view key, std::string_view value)
+{
+  pack_str_key(pk, key);
+  pack_str_key(pk, value);
+}
+
+}  // namespace
+
+void MetadataBuilder::pack_numpy_oob(
+  std::string_view dtype, const std::vector<std::int64_t> & shape,
+  const void * buffer_data, std::size_t buffer_size)
+{
+  const auto idx = add_oob_buffer(buffer_data, buffer_size);
+  packer_.pack_map(4);
+  pack_str_pair(packer_, "__cortex_oob__", "numpy");
+  pack_str_key(packer_, "buffer");
+  packer_.pack(idx);
+  pack_str_pair(packer_, "dtype", dtype);
+  pack_str_key(packer_, "shape");
+  pack_shape(packer_, shape);
+}
+
+void MetadataBuilder::pack_torch_oob(
+  std::string_view dtype, const std::vector<std::int64_t> & shape,
+  std::string_view device, bool requires_grad,
+  const void * buffer_data, std::size_t buffer_size)
+{
+  const auto idx = add_oob_buffer(buffer_data, buffer_size);
+  packer_.pack_map(6);
+  pack_str_pair(packer_, "__cortex_oob__", "torch");
+  pack_str_key(packer_, "buffer");
+  packer_.pack(idx);
+  pack_str_pair(packer_, "dtype", dtype);
+  pack_str_key(packer_, "shape");
+  pack_shape(packer_, shape);
+  pack_str_pair(packer_, "device", device);
+  pack_str_key(packer_, "requires_grad");
+  packer_.pack(requires_grad);
+}
+
+MetadataBuilder::Frames MetadataBuilder::finish() &&
+{
+  Frames out;
+  out.metadata.assign(
+    reinterpret_cast<const std::uint8_t *>(sbuf_.data()),
+    reinterpret_cast<const std::uint8_t *>(sbuf_.data()) + sbuf_.size());
+  out.oob_buffers = std::move(oob_buffers_);
+  sbuf_.clear();
+  return out;
+}
+
+}  // namespace cortex_wire

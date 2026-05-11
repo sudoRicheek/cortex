@@ -1,5 +1,5 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/discovery_client.hpp"
+#include "cortex_wire/discovery_client.hpp"
 
 #include <msgpack.hpp>
 
@@ -9,7 +9,7 @@
 #include <string_view>
 #include <utility>
 
-namespace cortex_ros2_bridge::cortex_wire
+namespace cortex_wire
 {
 
 namespace
@@ -267,4 +267,4 @@ void DiscoveryClient::unregister_topic(const std::string & topic_name)
   }
 }
 
-}  // namespace cortex_ros2_bridge::cortex_wire
+}  // namespace cortex_wire

@@ -1,5 +1,5 @@
 // Copyright (c) 2026, Cortex contributors. Apache-2.0.
-#include "cortex_ros2_bridge/cortex_wire/oob_buffer.hpp"
+#include "cortex_wire/oob_buffer.hpp"
 
 #include <gtest/gtest.h>
 #include <zmq.hpp>
@@ -9,10 +9,10 @@
 #include <memory>
 #include <vector>
 
-using cortex_ros2_bridge::cortex_wire::make_owned;
-using cortex_ros2_bridge::cortex_wire::OobBuffer;
-using cortex_ros2_bridge::cortex_wire::ZmqAllocator;
-using cortex_ros2_bridge::cortex_wire::ZmqFramePtr;
+using cortex_wire::make_owned;
+using cortex_wire::OobBuffer;
+using cortex_wire::ZmqAllocator;
+using cortex_wire::ZmqFramePtr;
 
 namespace
 {
