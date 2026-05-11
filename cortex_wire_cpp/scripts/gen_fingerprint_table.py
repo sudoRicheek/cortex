@@ -8,6 +8,7 @@ runs this script and asserts the result equals the checked-in header (PR9 task).
 Usage:
     scripts/gen_fingerprint_table.py [--out PATH]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -108,7 +109,7 @@ def collect_message_classes() -> list[type[Message]]:
 def render(classes: list[type[Message]]) -> str:
     enum_entries = "\n".join(f"  {c.__name__}," for c in classes)
     table_entries = "\n".join(
-        f'  {{0x{c.fingerprint():016x}ULL, MessageKind::{c.__name__}, '
+        f"  {{0x{c.fingerprint():016x}ULL, MessageKind::{c.__name__}, "
         f'"{c.__name__}", "{c.__module__}.{c.__qualname__}"}},'
         for c in classes
     )
