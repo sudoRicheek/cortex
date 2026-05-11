@@ -13,6 +13,11 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <depend>yaml-cpp</depend>
+  <depend>std_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <!-- cortex_wire_cpp is a pure-CMake library (not an ament package); it is
+       not listed here. It is resolved at build time via find_package, with an
+       in-tree add_subdirectory fallback for monorepo development. -->
   <depend>cppzmq</depend>
   <depend>libmsgpack-dev</depend>
 

@@ -13,14 +13,26 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(yaml-cpp REQUIRED)
-find_package(cppzmq REQUIRED)
-# msgpack-cxx is header-only. We avoid CMake imported-target propagation
-# (which would force msgpack-cxx into our export set on every distro) and
-# just locate its include path. Downstream targets get the headers via our
-# include directory export.
-find_path(MSGPACK_INCLUDE_DIR msgpack.hpp
-  HINTS /usr/include /usr/local/include
-  REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
+
+# cortex_wire_cpp — pure-CMake library, prefer installed package; fall back to
+# in-tree add_subdirectory for monorepo dev (when this package is built before
+# cortex_wire_cpp has been installed).
+find_package(cortex_wire_cpp QUIET)
+if(NOT cortex_wire_cpp_FOUND)
+  set(_cwc_dir "${CMAKE_CURRENT_SOURCE_DIR}/../../cortex_wire_cpp")
+  if(EXISTS "${_cwc_dir}/CMakeLists.txt")
+    message(STATUS "cortex_wire_cpp: using in-tree source at ${_cwc_dir}")
+    set(CORTEX_WIRE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(CORTEX_WIRE_INSTALL     OFF CACHE BOOL "" FORCE)
+    add_subdirectory("${_cwc_dir}" "${CMAKE_BINARY_DIR}/cortex_wire_cpp_external")
+  else()
+    message(FATAL_ERROR
+      "cortex_wire_cpp not found via find_package and no in-tree copy at "
+      "${_cwc_dir}. Install cortex_wire_cpp or fix the source layout.")
+  endif()
+endif()
 
 # ---- libraries ------------------------------------------------------------
 
@@ -33,26 +45,39 @@ target_include_directories(cortex_ros2_bridge_config PUBLIC
 )
 target_link_libraries(cortex_ros2_bridge_config PUBLIC yaml-cpp)
 
-add_library(cortex_ros2_bridge_wire SHARED
-  src/cortex_wire/header.cpp
-  src/cortex_wire/metadata.cpp
-  src/cortex_wire/discovery_client.cpp
+add_library(cortex_ros2_bridge_adapters SHARED
+  src/registry.cpp
+  src/adapters/primitives.cpp
 )
-target_include_directories(cortex_ros2_bridge_wire PUBLIC
+target_include_directories(cortex_ros2_bridge_adapters PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<BUILD_INTERFACE:${MSGPACK_INCLUDE_DIR}>
   $<INSTALL_INTERFACE:include>
 )
-target_link_libraries(cortex_ros2_bridge_wire PUBLIC
-  cppzmq
+target_link_libraries(cortex_ros2_bridge_adapters PUBLIC
+  cortex_ros2_bridge_config
+  cortex_wire::cortex_wire
+)
+ament_target_dependencies(cortex_ros2_bridge_adapters PUBLIC
+  std_msgs
+  builtin_interfaces
 )
 
 # ---- install --------------------------------------------------------------
 
 install(DIRECTORY include/ DESTINATION include)
 
-install(TARGETS cortex_ros2_bridge_config cortex_ros2_bridge_wire
+install(TARGETS cortex_ros2_bridge_config
   EXPORT export_cortex_ros2_bridge
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+# cortex_ros2_bridge_adapters is internal to this package: consumed by the
+# bridge components in PR4 but not exported downstream (it transitively
+# depends on cortex_wire which is brought in via add_subdirectory and is
+# therefore not installable from here). Re-evaluate when a downstream
+# package needs to link against the adapter library directly.
+install(TARGETS cortex_ros2_bridge_adapters
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -60,12 +85,10 @@ install(TARGETS cortex_ros2_bridge_config cortex_ros2_bridge_wire
 
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
-install(PROGRAMS scripts/gen_fingerprint_table.py
-  DESTINATION lib/${PROJECT_NAME}/scripts)
 
 ament_export_include_directories(include)
 ament_export_targets(export_cortex_ros2_bridge HAS_LIBRARY_TARGET)
-ament_export_dependencies(yaml-cpp cppzmq)
+ament_export_dependencies(yaml-cpp std_msgs builtin_interfaces)
 
 # ---- tests ----------------------------------------------------------------
 
@@ -86,20 +109,11 @@ if(BUILD_TESTING)
   ament_add_gtest(test_config test/test_config.cpp)
   target_link_libraries(test_config cortex_ros2_bridge_config)
 
-  ament_add_gtest(test_wire_header test/test_wire_header.cpp)
-  target_link_libraries(test_wire_header cortex_ros2_bridge_wire)
+  ament_add_gtest(test_registry test/test_registry.cpp)
+  target_link_libraries(test_registry cortex_ros2_bridge_adapters)
 
-  ament_add_gtest(test_wire_metadata test/test_wire_metadata.cpp)
-  target_link_libraries(test_wire_metadata cortex_ros2_bridge_wire)
-
-  ament_add_gtest(test_oob_buffer test/test_oob_buffer.cpp)
-  target_link_libraries(test_oob_buffer cortex_ros2_bridge_wire)
-
-  ament_add_gtest(test_discovery_client test/test_discovery_client.cpp)
-  target_link_libraries(test_discovery_client cortex_ros2_bridge_wire)
-
-  ament_add_gtest(test_fingerprint_table test/test_fingerprint_table.cpp)
-  target_link_libraries(test_fingerprint_table cortex_ros2_bridge_wire)
+  ament_add_gtest(test_primitives test/test_primitives.cpp)
+  target_link_libraries(test_primitives cortex_ros2_bridge_adapters)
 endif()
 
 ament_package()
