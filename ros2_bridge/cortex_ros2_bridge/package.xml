@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>cortex_ros2_bridge</name>
+  <version>0.1.0</version>
+  <description>
+    Bidirectional bridge between Cortex pub/sub (ZeroMQ IPC) and ROS 2 topics.
+    Configurable via YAML; composable nodes for intra-process zero-copy.
+  </description>
+  <maintainer email="lr1883@princeton.edu">Richeek Das</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>yaml-cpp</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
