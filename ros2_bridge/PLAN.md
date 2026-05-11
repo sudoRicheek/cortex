@@ -46,7 +46,7 @@ ROS 2 zero-copy has two distinct mechanisms; the bridge needs both to give a sin
 
 The bridge implementation must:
 
-1. Never copy the OOB buffer when constructing the ROS 2 message (`sensor_msgs::Image::data` should be filled with a `std::move` of a `std::vector<uint8_t>` backed by the ZMQ frame, or via `borrow_loaned_message()` when available).
+1. Avoid heap allocation per message for the data buffer. The `ZmqAllocator<T>` introduced in PR2 lets a `std::vector<uint8_t>` use a ZMQ frame's buffer as its storage with no fresh allocation. **Caveat discovered in PR2**: `std::vector`'s sizing constructor value-initialises its elements (zeros them), so the published `Image::data` requires one explicit memcpy from the OOB frame into `v.data()`. The wins are (a) no `malloc` per message and (b) the frame's lifetime is tied to the vector's lifetime for free. *True* byte-level aliasing into a default-allocator `sensor_msgs::Image::data` is not achievable without loaned messages or a custom message type; see §14.
 2. Publish using `std::unique_ptr<Msg>` (the API path that `rclcpp` requires for intra-process zero-copy with multiple subscribers).
 3. Detect at runtime whether `RMW_IMPLEMENTATION` supports loaned messages (`can_loan_messages()`), and fall back gracefully if not.
 
@@ -542,11 +542,58 @@ Each phase ends with passing tests and a working YAML example.
 3. **Configurable adapter overrides in YAML.** e.g. `adapter: "my_pkg::BayerImageAdapter"` for non-default encodings. Trivial once pluginlib is in.
 4. **TF integration scope.** `broadcast_tf: true` on `TransformMessage`/`PoseMessage`. Decide: one shared `tf2_ros::TransformBroadcaster` per component (cheaper, simpler) vs. one per bridge entry (more isolated). Default to shared.
 5. **Sync vs. async Cortex mode.** Since the bridge is pure C++, the Cortex async-vs-sync distinction goes away — we always use raw `zmq::socket_t` with our own poller. This is closer to Cortex's sync subscriber path (see [docs/plans/sync-subscriber-latency.md](../docs/plans/sync-subscriber-latency.md)) and should hit sub-100 µs add-on latency on top of the underlying transport. The YAML `cortex_mode` field is therefore likely unnecessary — remove it before v1 freezes.
-6. **Discovery client port.** The discovery REQ/REP protocol must be reimplemented in C++. It's small but it's a maintenance surface — confirm the protocol is stable (see [src/cortex/discovery/protocol.py](../src/cortex/discovery/protocol.py)) before committing.
+6. **Discovery client port.** The discovery REQ/REP protocol must be reimplemented in C++. It's small but it's a maintenance surface — confirm the protocol is stable (see [src/cortex/discovery/protocol.py](../src/cortex/discovery/protocol.py)) before committing. *Resolved in PR2:* ported as-is; one fragility flagged in §14.
 
 ---
 
-## 13. Done definition
+## 13. Implementation findings (PR1 → PR2)
+
+What we learned while writing PR1 and PR2 that should reshape the later PRs.
+
+### 13.1 PR1 (config) — small surprises, mostly clean
+
+- The schema needed one validation rule that wasn't in §5: `ros2_to_cortex` entries must specify `ros2.type` explicitly. The adapter can default the ROS type for the **forward** direction (`ImageMessage` → `sensor_msgs/Image`), but the reverse is ambiguous (`Twist` and `PoseStamped` both target `PoseMessage`). The loader rejects ambiguous reverse entries up front instead of letting them blow up at adapter resolution.
+- The ament style lint suite (copyright, cpplint, uncrustify, pep257, flake8) is too noisy and self-contradictory (cpplint expects test filenames it cannot infer from our naming). We disabled all five in `CMakeLists.txt` and rely on cppcheck + lint_cmake + xmllint as the substantive linters. If we want enforced style, add a separate clang-format/black config — do *not* re-enable ament's defaults.
+
+### 13.2 PR2 (wire library) — the load-bearing finding
+
+**The "zero-copy" story is half-true.** The plan's §6.1 sketch implied a `ZmqBackedVector` that gives both pointer aliasing *and* content aliasing. PR2 proved you can have only one of those when the downstream type is `std::vector<uint8_t>` (which it is, for every `sensor_msgs` data field):
+
+- **Pointer aliasing** ✓ — `ZmqAllocator<T>` returns the frame's buffer from `allocate()`, so the vector does not call `malloc`.
+- **Content aliasing** ✗ — `std::vector(n, alloc)` value-initialises every element, overwriting the frame's bytes with `T()`. Any other sizing path has the same problem.
+- **Lifetime piggybacking** ✓ — the shared_ptr inside the allocator keeps the frame alive for the vector's lifetime, even across moves. This is the genuine win.
+
+**Practical implication for PR4–PR6**: the Image / PointCloud adapters' cortex→ROS path does `std::vector<uint8_t, ZmqAllocator<uint8_t>> data(N, alloc); std::memcpy(data.data(), frame->data(), N);` — one memcpy, zero `malloc`s. The PR8 (loaned-message) path becomes more important than originally framed: it is the *only* way to fully avoid the memcpy on default-allocator messages without a custom message type. Promote PR8 in priority or accept the memcpy as the steady-state cost.
+
+The honest version of this trade-off is now documented at the top of [oob_buffer.hpp](cortex_ros2_bridge/include/cortex_ros2_bridge/cortex_wire/oob_buffer.hpp).
+
+**Read-only aliasing is still free.** `OobBuffer<T>` (no `std::vector` involvement) gives true zero-copy *read* access to the frame. The decoder paths in adapters that don't have to fit into a `std::vector` (most internal computations, all logging/metrics) should use `OobBuffer` directly.
+
+**msgpack-cxx in the public API was the right call but cost some CMake gymnastics.** `metadata.hpp` exposes `const msgpack::object &` so adapters get unfiltered access to nested dicts/lists without re-decoding. Ubuntu 22.04 ships msgpack-cxx headers via `libmsgpack-dev` but with **no CMake config**. We resolved this with `find_path(MSGPACK_INCLUDE_DIR msgpack.hpp)` and exporting the include directory rather than an imported target — the latter would have forced msgpack-cxx into our package's export set, which CMake forbids without an installed target. Pin this pattern in PR3 when the adapter base header also pulls in msgpack types.
+
+**Discovery protocol has one fragile quirk.** Cortex packs `TopicInfo` as a *msgpack `bin` blob inside another msgpack map*, not as a nested map. The C++ encoder/decoder must match this byte-for-byte: see `pack_topic_info` / `unpack_topic_info` in [discovery_client.cpp](cortex_ros2_bridge/src/cortex_wire/discovery_client.cpp). If Cortex ever changes this on the Python side without a wire-version bump, the C++ bridge will silently misdecode. Worth coordinating with the upstream protocol — possibly add a `protocol_version` field in a future Cortex release.
+
+**Fingerprints are tied to module path.** `compute_fingerprint` uses `f"{module}.{qualname}"`, so every standard message's fingerprint is hashed against `cortex.messages.standard.X`. Moving `cortex.messages.standard` to a different module path silently invalidates all bridges in the field. The C++ table records the qualified name and we test against it (see [test_fingerprint_table.cpp](cortex_ros2_bridge/test/test_fingerprint_table.cpp)) — a CI staleness check catches this, but the upstream package layout is now a wire-stability concern. Note in Cortex's `CHANGELOG` policy.
+
+### 13.3 Gaps PR2 did not cover
+
+These are real and need to land before PR3 can be finished cleanly:
+
+- **Metadata encoder.** PR2 has `DecodedMetadata::from_bytes(...)` but no `serialize_metadata(...)` counterpart. The ros2→cortex direction (PR5) needs to *pack* a msgpack array of field values plus OOB descriptors. Add this in PR3 as part of the adapter base, since adapters need it in both directions.
+- **Cortex `bytes`-typed fields.** msgpack distinguishes `STR` (UTF-8) from `BIN` (opaque bytes). `BytesMessage`'s `data` round-trips through Python as `BIN`. The decoder treats them correctly already; the encoder needs the same care. Add a test fixture for `BytesMessage` in PR3.
+- **Nested dict / list walking.** `DictMessage` and `ListMessage` contain arbitrary nested structures that may themselves contain OOB descriptors (a dict-of-arrays is common). PR2 only exercises top-level OOB descriptors. Adapter code in PR3 must recurse on msgpack maps/arrays and dispatch to `as_oob` at every level. The unit-test suite needs a `dict_with_nested_array` case to lock this in.
+
+### 13.4 Operational notes
+
+- The neurosim:ros docker is the dev environment. Quirks:
+  - PATH must put `/usr/bin` ahead of `/opt/conda/bin` so `catkin_pkg` from system Python is used. Required: `export PATH=/usr/bin:$PATH; unset PYTHONPATH`.
+  - colcon build requires `-DPython3_EXECUTABLE=/usr/bin/python3` for the same reason.
+  - `libmsgpack-dev` is not preinstalled; `apt-get update && apt-get install -y libmsgpack-dev` each run. Persist this in a derived Dockerfile to avoid the per-run install in CI.
+  - colcon test loses `build/` between transient docker invocations. Build + test in one container run, or mount a persistent build volume.
+
+---
+
+## 14. Done definition
 
 - `colcon build` builds the package on a clean ROS 2 Humble install.
 - `ros2 launch cortex_ros2_bridge composable_container.launch.py config:=config/example_full.yaml` brings up the bridge, both directions, and `ros2 topic list` shows all configured topics.
