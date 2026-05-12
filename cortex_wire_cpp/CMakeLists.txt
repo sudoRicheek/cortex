@@ -42,8 +42,13 @@ add_library(cortex_wire
   src/header.cpp
   src/metadata.cpp
   src/discovery_client.cpp
+  src/publisher.cpp
+  src/subscriber.cpp
 )
 add_library(cortex_wire::cortex_wire ALIAS cortex_wire)
+
+find_package(Threads REQUIRED)
+target_link_libraries(cortex_wire PUBLIC Threads::Threads)
 
 target_include_directories(cortex_wire PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
@@ -133,6 +138,7 @@ if(CORTEX_WIRE_BUILD_TESTS)
     test_oob_buffer
     test_discovery_client
     test_fingerprint_table
+    test_pub_sub_roundtrip
   )
   foreach(t ${_cortex_wire_tests})
     add_executable(${t} test/${t}.cpp)
