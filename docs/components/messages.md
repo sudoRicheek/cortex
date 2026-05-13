@@ -3,9 +3,7 @@
 > **Source:** [`cortex.messages.base`](../reference/messages/base.md),
 > [`cortex.messages.standard`](../reference/messages/standard.md)
 
-Messages are just `@dataclass`es that inherit from
-[`Message`][cortex.messages.base.Message]. Registering with the type system,
-computing a fingerprint, and (de)serialization all happen automatically.
+A message is a `@dataclass` that inherits from [`Message`][cortex.messages.base.Message]. Registration, fingerprinting, and serialization are automatic.
 
 ## Anatomy of a message
 
@@ -55,22 +53,16 @@ class JointTrajectory(Message):
     frame_id: str = ""
 ```
 
-That is the entire contract. The class is registered into
-[`MessageType._registry`][cortex.messages.base.MessageType] by fingerprint at
-import time, and gains:
+The class registers into [`MessageType._registry`][cortex.messages.base.MessageType] by fingerprint at import time and gains:
 
 - `JointTrajectory.fingerprint()` — 64-bit ID.
-- `msg.to_frames()` / `JointTrajectory.from_frames(frames)` — the transport path.
-- `msg.to_bytes()` / `JointTrajectory.from_bytes(data)` — the legacy blob path.
+- `msg.to_frames()` / `JointTrajectory.from_frames(frames)` — transport path.
+- `msg.to_bytes()` / `JointTrajectory.from_bytes(data)` — legacy single-blob path.
 - `Message.decode(blob)` — class dispatch via fingerprint registry.
 
 ## Sequence numbering
 
-!!! warning "Class-level counter"
-    `Message._sequence_counter` is shared across **all publisher instances** of
-    the same message class in the process. Two `ArrayMessage` publishers
-    interleave sequence numbers. Per-topic gap detection therefore needs a
-    per-publisher counter today; see [critique.md § 12](../critique.md).
+Per-publisher monotonic counter, attached to each message's header. A class-level fallback counter on `Message._sequence_counter` covers direct `to_bytes`/`to_frames` use outside a Publisher (tests, ad-hoc serialization).
 
 ## Built-in messages
 

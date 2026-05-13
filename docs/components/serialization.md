@@ -3,10 +3,12 @@
 > **Source:** [`cortex.utils.serialization`](../reference/utils/serialization.md),
 > [`cortex.utils.hashing`](../reference/utils/hashing.md)
 
-Two encodings live side by side: a **multipart / out-of-band** path that the
-transport actually uses, and a **single-blob** path kept for the legacy
-`Message.to_bytes` / `decode` API and tests. Both support the same Python
-types; only their frame layout differs.
+Two encodings:
+
+- **Multipart / OOB** — what the transport uses. Arrays ride as separate frames.
+- **Single-blob** — legacy `Message.to_bytes` / `decode`, used by tests and persistence.
+
+Both support the same Python types; only the frame layout differs.
 
 ## Supported types
 
@@ -34,8 +36,7 @@ types; only their frame layout differs.
         Bufs2 --> Out
     ```
 
-    The function of interest is
-    [`serialize_message_frames`][cortex.utils.serialization.serialize_message_frames]:
+    Entry point: [`serialize_message_frames`][cortex.utils.serialization.serialize_message_frames]:
 
     ```python
     metadata_bytes, [buf0, buf1, ...] = serialize_message_frames(values)
@@ -52,14 +53,11 @@ types; only their frame layout differs.
         Ext --> Blob[single bytes blob]
     ```
 
-    The single blob round-trips through `serialize(value)` →
-    `deserialize(data)`. Useful for persisting to disk, caches, or when you
-    need a self-contained payload without tracking extra buffers.
+    `serialize(value)` → `deserialize(data)`. Useful for persistence or any self-contained payload without extra buffers.
 
 ## OOB descriptors
 
-An out-of-band descriptor is a small dict that takes the place of the array
-inside the msgpack metadata:
+A small dict that takes the place of the array inside the msgpack metadata:
 
 ```python
 # numpy
@@ -70,9 +68,7 @@ inside the msgpack metadata:
  "shape": [1, 3, 224, 224], "device": "cuda:0", "requires_grad": True}
 ```
 
-The `buffer` index refers into the ZMQ frames that follow the metadata.
-Nested structures (dict of arrays, list of tensors, etc.) are walked
-recursively by `_encode_transport_value` / `_decode_transport_value`.
+`buffer` is the index into the ZMQ frames after the metadata. Nested structures (dict of arrays, list of tensors) are walked recursively by `_encode_transport_value` / `_decode_transport_value`.
 
 ## Zero-copy on the decode side
 
@@ -91,30 +87,17 @@ sequenceDiagram
 ```
 
 !!! warning "Aliasing caveat"
-    The returned NumPy array is **a view over the ZMQ frame buffer**. It is
-    safe to read as long as the frame lives, which is at least until your
-    callback returns. If you need to:
-
-    - mutate the array, or
-    - keep it past the callback,
-
-    call `arr = arr.copy()` first. This is cheap compared to the savings on
-    the hot path.
+    The returned NumPy array is a view over the ZMQ frame buffer. Safe to read while the frame lives (at least until your callback returns). If you need to mutate or keep it past the callback, `arr = arr.copy()` first.
 
 ## PyTorch specifics
 
-- Tensors are **always moved to CPU** for transport. Transport frames carry
-  the tensor's CPU bytes plus the original device string.
-- On decode, CUDA tensors are moved back to the original device when CUDA is
-  available; otherwise they stay on CPU.
+- Tensors are always moved to CPU for transport.
+- On decode, CUDA tensors are moved back to the original device if CUDA is available; otherwise they stay on CPU.
 - `requires_grad` is preserved.
 
 ## Fingerprinting
 
-Separate but related: [`compute_fingerprint(cls)`][cortex.utils.hashing.compute_fingerprint]
-computes a 64-bit identity from the module path, class name, and sorted
-`field:type` pairs. Cached per-class in `_fingerprint_cache`. See
-[Concepts → Fingerprinting](../concepts/fingerprinting.md) for the full story.
+[`compute_fingerprint(cls)`][cortex.utils.hashing.compute_fingerprint] computes a 64-bit identity from module path, class name, and sorted `field:type` pairs. Cached per-class. Full story: [Concepts → Fingerprinting](../concepts/fingerprinting.md).
 
 ## When to use each helper
 

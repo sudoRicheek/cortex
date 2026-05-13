@@ -35,6 +35,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[docs]"
 
+      - name: Verify generated API reference is in sync
+        run: python docs/gen_ref_pages.py --check
+
       - name: Build docs
         run: zensical build -f docs/mkdocs.yml
 

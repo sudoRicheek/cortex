@@ -1,16 +1,14 @@
 # PyTorch tensors
 
-[`TensorMessage`][cortex.messages.standard.TensorMessage] lets you pipe
-tensors between processes with the same zero-copy multipart transport used
-for NumPy arrays. Device and `requires_grad` metadata are preserved; the
-bytes travel via the CPU side of the tensor.
+[`TensorMessage`][cortex.messages.standard.TensorMessage] pipes tensors between processes using the same zero-copy multipart transport as NumPy. Device and `requires_grad` are preserved; bytes travel via the CPU side.
 
 ## Publish
 
 ```python title="inference_producer.py"
 import torch
 import cortex
-from cortex import Node, TensorMessage
+from cortex import Node
+from cortex.messages.standard import TensorMessage
 
 
 class Inference(Node):
@@ -20,7 +18,6 @@ class Inference(Node):
         self.create_timer(1 / 30, self.tick)
 
     async def tick(self):
-        # Fake feature tensor; could be output of a real model
         feats = torch.randn(4, 256, 7, 7, device="cuda" if torch.cuda.is_available() else "cpu")
         self.pub.publish(TensorMessage(data=feats, name="layer4_feats"))
 
@@ -32,8 +29,9 @@ cortex.run(Inference().run())
 
 ```python title="downstream_consumer.py"
 import cortex
-from cortex import Node, TensorMessage
+from cortex import Node
 from cortex.messages.base import MessageHeader
+from cortex.messages.standard import TensorMessage
 
 
 async def on_features(msg: TensorMessage, header: MessageHeader):
@@ -50,7 +48,7 @@ class Consumer(Node):
 cortex.run(Consumer().run())
 ```
 
-## What gets preserved
+## What's preserved
 
 ```mermaid
 flowchart LR
@@ -70,13 +68,12 @@ flowchart LR
 | `shape`              | ✓                        |
 | `device`             | ✓ string; restored on decode if available |
 | `requires_grad`      | ✓                        |
-| `grad` (the actual gradient) | ✗ not sent       |
+| `grad` (the gradient itself) | ✗ not sent       |
 | autograd graph       | ✗ not sent (`detach()` is implicit) |
 
 ## Multi-tensor payloads
 
-When you need several tensors together — e.g. a model's inputs and outputs
-— use [`MultiTensorMessage`][cortex.messages.standard.MultiTensorMessage]:
+[`MultiTensorMessage`][cortex.messages.standard.MultiTensorMessage] carries several tensors at once. Each gets its own OOB frame; no bytes are copied into a container.
 
 ```python
 from cortex.messages.standard import MultiTensorMessage
@@ -89,19 +86,13 @@ msg = MultiTensorMessage(tensors={
 pub.publish(msg)
 ```
 
-Each tensor gets its own OOB frame; no bytes are copied into a container.
-
 ## Caveats
 
 !!! warning "CPU detour is mandatory"
-    Even for two processes on the same GPU, tensors are DMA'd to CPU on send
-    and back to GPU on receive. That is a copy on each side. Cortex does not
-    currently support CUDA IPC — for tight in-process handoffs, prefer a
-    torch.multiprocessing queue or shared CUDA memory.
+    Even for two processes on the same GPU, tensors are DMA'd to CPU on send and back to GPU on receive — one copy per side. Cortex does not support CUDA IPC. For tight in-process handoffs, use `torch.multiprocessing` or shared CUDA memory directly.
 
 !!! note "Install with the `torch` extra"
-    `TensorMessage` raises on construction if PyTorch is not installed. Use
-    `pip install -e ".[torch]"`.
+    `TensorMessage` raises on construction if PyTorch is not installed. `pip install -e ".[torch]"`.
 
 ## See also
 

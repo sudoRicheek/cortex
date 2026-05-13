@@ -3,10 +3,7 @@
 > **Source:** [`cortex.core.node`](../reference/core/node.md),
 > [`cortex.core.executor`](../reference/core/executor.md)
 
-A [`Node`][cortex.core.node.Node] is the user-facing composition unit: it owns
-a shared ZMQ async context and a collection of publishers, subscribers, and
-timers. Executors provide the scheduling primitives that timers and
-subscriber receive loops run on.
+A [`Node`][cortex.core.node.Node] owns a ZMQ async context, a set of publishers/subscribers, and a list of timers. Executors are the loops that drive timers and subscriber receive paths.
 
 ## Responsibilities
 
@@ -28,11 +25,7 @@ flowchart TB
     S -. uses .-> CTX
 ```
 
-One node = one process boundary in practice. Nothing stops you running
-multiple nodes in the same process (`asyncio.gather([n.run() for n in nodes])`,
-see [`examples/multi_node_system.py`](https://github.com/sudoRicheek/cortex/blob/main/examples/multi_node_system.py)),
-but remember they share the same event loop — a slow callback in one still
-blocks the others.
+One node ≈ one process. You can run several in the same process via `asyncio.gather([n.run() for n in nodes])` ([`examples/multi_node_system.py`](https://github.com/sudoRicheek/cortex/blob/main/examples/multi_node_system.py)) — but they share the event loop, so a slow callback in one blocks the others.
 
 ## Lifecycle
 
@@ -47,11 +40,9 @@ stateDiagram-v2
     Closed --> [*]: context terminated
 ```
 
-### `node.run()`
+`node.run()` spawns one asyncio task per timer and one per callback-bearing subscriber, then `asyncio.gather`s them.
 
-Spawns one asyncio task per timer and one per callback-bearing subscriber,
-then `asyncio.gather`s them. Returns when all tasks complete or the node is
-stopped.
+`node.close()` stops executors, cancels tasks, closes all sockets, and terms the ZMQ context. Idempotent.
 
 ```python
 async with Node("my_node") as node:
@@ -61,15 +52,9 @@ async with Node("my_node") as node:
 # __aexit__ calls close() automatically
 ```
 
-### `node.close()`
-
-Stops all executors, cancels outstanding tasks, closes every publisher and
-subscriber (each of which unregisters/unbinds their own socket), and
-terminates the shared ZMQ context. Idempotent.
-
 ## Executors
 
-Two flavours, both subclasses of `BaseExecutor`.
+Two subclasses of `BaseExecutor`:
 
 ```mermaid
 classDiagram
@@ -95,24 +80,11 @@ classDiagram
 
 ### `AsyncExecutor`
 
-"Run this coroutine as fast as possible, yielding between iterations."
-
-```mermaid
-flowchart LR
-    Start --> Check{running?}
-    Check -- no --> End
-    Check -- yes --> Call[await func]
-    Call -- exception --> Log[log error]
-    Log --> Sleep
-    Call --> Sleep[await sleep 0]
-    Sleep --> Check
-```
-
-Used by `Subscriber.run` to drive the receive-dispatch loop.
+Tight loop: `await func(); await asyncio.sleep(0)`. Used by `Subscriber.run` for receive-dispatch.
 
 ### `RateExecutor`
 
-"Run this coroutine at a constant rate, catching up on overruns."
+Fixed-grid timer at `rate_hz`. `next_exec_time` is initialized once, then advances by exactly one `interval` per callback invocation — never reset to "now."
 
 ```mermaid
 flowchart TD
@@ -122,21 +94,12 @@ flowchart TD
     Now --> Due{now >= next?}
     Due -- yes --> Call[await func]
     Call --> Advance[next += interval]
-    Advance --> Behind{next < now?}
-    Behind -- yes --> Reset[next = now + interval]
-    Behind -- no --> Wait
-    Reset --> Wait
-    Due -- no --> Wait[await sleep next - now]
+    Advance --> Wait
+    Due -- no --> Wait[await sleep max 0, next - now]
     Wait --> Loop
 ```
 
-The catch-up branch silently drops ticks — if your 100 Hz callback takes
-20 ms once, you do not get two callbacks back-to-back; you skip one tick.
-
-!!! warning "Redundant yield"
-    Today there is an `await asyncio.sleep(0)` inside the loop *and*
-    `await asyncio.sleep(max(0, dt))` at the bottom. That generates an extra
-    wakeup per tick. See [critique § 15](../critique.md).
+**Missed ticks are not skipped.** If a 100 Hz callback overruns by 20 ms, the next two ticks fire back-to-back with zero-length sleeps until the clock catches up. The grid is preserved; no tick is silently dropped.
 
 ## Timer usage
 
@@ -145,21 +108,11 @@ node.create_timer(1.0 / 30, self.publish_frame)   # 30 Hz
 node.create_timer(1.0, self.log_stats)            # 1 Hz
 ```
 
-Timers are plain async functions — no decorator, no magic. They run in the
-same event loop as subscriber callbacks, so the same head-of-line caveat
-applies.
+Plain async functions, no decorator. They share the event loop with subscriber callbacks — same head-of-line caveat.
 
 ## Shared ZMQ context
 
-Every publisher and subscriber created through a node **reuses** the node's
-`zmq.asyncio.Context`. This means:
-
-- Socket creation is cheap.
-- io threads are shared across all sockets in the node.
-- Terminating the node's context cleanly shuts down all its sockets.
-
-Do not create your own context inside callbacks; you'll leak resources and
-defeat the shared-io-thread optimization.
+Every publisher/subscriber created through a node reuses the node's `zmq.asyncio.Context`. Socket creation is cheap, io threads are shared, terminating the context shuts everything down. Don't create your own context inside callbacks.
 
 ## Minimal complete node
 

@@ -76,12 +76,6 @@ markdown_extensions:
 
 plugins:
   - search
-  - section-index
-  - literate-nav:
-      nav_file: SUMMARY.md
-  - gen-files:
-      scripts:
-        - gen_ref_pages.py
   - mkdocstrings:
       default_handler: python
       handlers:
@@ -129,10 +123,10 @@ nav:
       - tutorials/pytorch-tensors.md
   - Guides:
       - guides/performance-tuning.md
+      - guides/sync-mode.md
       - guides/benchmarks.md
       - guides/debugging.md
-  - Critique: critique.md
-  - API reference: reference/
+  - API reference: reference/index.md
 
 extra:
   social:

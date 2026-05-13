@@ -1,8 +1,6 @@
 # Discovery protocol
 
-The discovery daemon speaks a tiny msgpack-over-REQ/REP protocol. It is not
-on the data path — once a subscriber has the endpoint, messages flow
-publisher → subscriber directly.
+A msgpack-over-REQ/REP protocol. Not on the data path — once a subscriber has the endpoint, messages flow publisher → subscriber directly.
 
 ## Commands
 
@@ -68,13 +66,11 @@ sequenceDiagram
     end
 ```
 
-`wait_for_topic_async` implements the retry loop with `asyncio.sleep` so the
-event loop keeps spinning.
+`wait_for_topic_async` runs the retry loop with `asyncio.sleep` so the event loop keeps spinning.
 
 ## REQ-socket recovery
 
-ZMQ `REQ` sockets enter a bad state after a missed reply — they block further
-sends. The client detects `zmq.Again` on timeout and rebuilds the socket:
+A ZMQ `REQ` socket gets stuck after a missed reply. The client detects `zmq.Again` on timeout and rebuilds the socket:
 
 ```mermaid
 flowchart TD
@@ -99,9 +95,6 @@ See [`DiscoveryClient._reconnect`][cortex.discovery.client.DiscoveryClient].
 | Publisher crashes                        | Registry keeps stale `TopicInfo` until someone UNREGISTERs. |
 | Two publishers, same topic               | Second registration rejected with `ALREADY_EXISTS`. |
 | Subscriber looks up before publisher     | `NOT_FOUND`; caller may `wait_for_topic` to poll. |
-
-Roadmap items (see [critique.md](../critique.md)) to address these: leases with
-heartbeats, multi-publisher support, and notify-on-change.
 
 ## See also
 

@@ -1,37 +1,35 @@
 # Performance tuning
 
-Current measured numbers on the repo's benchmark suite (single workstation):
+Measured on the repo's benchmark suite, single workstation:
 
 | Workload              | Throughput / latency            |
 | --------------------- | ------------------------------- |
 | Small payload latency | mean 556 µs, p99 1075 µs        |
-| 1MB array throughput  | 7.7k msg/s, 8.0 GB/s            |
-| 4MB array throughput  | 2.25k msg/s, 9.4 GB/s           |
+| 1 MB array throughput | 7.7k msg/s, 8.0 GB/s            |
+| 4 MB array throughput | 2.25k msg/s, 9.4 GB/s           |
 | 1080p RGB             | 1422 fps, 8.8 GB/s              |
 
-See [Benchmarks guide](benchmarks.md) to reproduce.
+See [Benchmarks](benchmarks.md) to reproduce.
 
 ## Copy-on-use
 
-Decoded NumPy arrays **alias the ZMQ frame memory**. That is what makes
-large-payload throughput close to memcpy bandwidth — but it means:
+Decoded NumPy arrays **alias the ZMQ frame memory** — that's how large-payload throughput hits memcpy bandwidth. Consequence:
 
-- If you intend to mutate the array, `arr = arr.copy()` first.
-- If you intend to hold the array past the callback, copy it first.
+- Mutate the array? `arr = arr.copy()` first.
+- Hold the array past the callback? Copy first.
 
 ## Queue sizing
 
-Per-socket HWM defaults to 10. Increase `queue_size` on high-rate producers
-whose subscribers are known to be slow — but remember that ZMQ drops silently
-at the HWM.
+Per-socket HWM defaults to 10. Increase `queue_size` on high-rate producers whose subscribers are slow — but remember ZMQ drops silently at the HWM.
 
-## When to prefer the inline path
+## When to prefer the single-blob path
 
-Single tiny messages (primitives only, < 1 KB) see no benefit from multipart.
-The inline `to_bytes` path is still fine there. Publishers always use
-multipart today.
+Tiny messages (primitives only, < 1 KB) see no benefit from multipart. The inline `to_bytes` path is fine there. The transport always uses multipart today.
 
 ## uvloop
 
-Installed by default on Unix. Drops tail latency on high-rate small messages
-noticeably. No action needed.
+Installed by default on Unix. Drops tail latency on high-rate small messages.
+
+## Sync subscriber mode
+
+For control loops needing sub-100 µs p99, see [Sync subscriber mode](sync-mode.md). Bypasses asyncio + `zmq.asyncio` on the receive path.
