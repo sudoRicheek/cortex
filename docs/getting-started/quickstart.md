@@ -96,7 +96,7 @@ sequenceDiagram
     D-->>S: ipc:///tmp/cortex/topics/...
     S->>P: ZMQ SUB connect + SUBSCRIBE "/sensor/data"
     loop 10 Hz
-        P->>S: multipart [topic, header, metadata, buffer]
+        P->>S: multipart frames: topic, header, metadata, buffer
         S->>S: decode + await on_data(msg, header)
     end
 ```

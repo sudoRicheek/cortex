@@ -6,7 +6,7 @@ Walk-through of [`examples/multi_node_system.py`](https://github.com/sudoRicheek
 
 ```mermaid
 flowchart LR
-    subgraph Sensors[Sensor nodes]
+    subgraph Sensors [Sensor nodes]
         S1["sensor_lidar<br/>10 Hz"]
         S2["sensor_camera<br/>10 Hz"]
     end

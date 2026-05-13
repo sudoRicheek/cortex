@@ -10,7 +10,7 @@ A single long-lived process mapping topic names to ZMQ endpoints. Off the data p
 
 ```mermaid
 flowchart LR
-    subgraph DP[discovery package]
+    subgraph DP [discovery package]
         PR[protocol.py<br/>DiscoveryRequest /<br/>DiscoveryResponse /<br/>TopicInfo]
         DM[daemon.py<br/>DiscoveryDaemon<br/>ZMQ REP loop]
         CL[client.py<br/>DiscoveryClient<br/>ZMQ REQ wrapper]

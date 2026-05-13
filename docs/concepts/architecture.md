@@ -6,11 +6,11 @@ Three moving parts: the **discovery daemon**, **publisher** nodes, **subscriber*
 
 ```mermaid
 flowchart TB
-    subgraph CP[Control plane]
+    subgraph CP [Control plane]
         DD[Discovery daemon<br/><small>ipc:///tmp/cortex/discovery.sock</small>]
     end
 
-    subgraph DP[Data plane]
+    subgraph DP [Data plane]
         direction LR
         P[Publisher node] -- "PUB / SUB (IPC)" --> S[Subscriber node]
     end
@@ -43,7 +43,7 @@ sequenceDiagram
     User->>Pub: publish(Message)
     Pub->>Pub: build header (fingerprint, ts, seq)
     Pub->>Pub: encode field values + OOB buffers
-    Pub->>Sock: send_multipart([topic, header, metadata, *buffers])
+    Pub->>Sock: send_multipart of topic, header, metadata, *buffers
     Sock->>Net: zero-copy handoff
     Net->>SSock: frames delivered
     SSock->>Sub: recv_multipart(copy=False)
@@ -57,7 +57,7 @@ Array buffers ride as **separate ZMQ frames**, not inline in the metadata. See [
 
 ```mermaid
 flowchart LR
-    subgraph P1[Process: sensor]
+    subgraph P1 [Process: sensor]
         N1[Node<br/>shared zmq.asyncio.Context]
         PUB1[Publisher /sensor/a]
         PUB2[Publisher /sensor/b]
@@ -67,7 +67,7 @@ flowchart LR
         N1 --> T1
     end
 
-    subgraph P2[Process: processor]
+    subgraph P2 [Process: processor]
         N2[Node]
         SUB1[Subscriber /sensor/a]
         SUB2[Subscriber /sensor/b]

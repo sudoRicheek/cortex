@@ -9,7 +9,7 @@ A [`Node`][cortex.core.node.Node] owns a ZMQ async context, a set of publishers/
 
 ```mermaid
 flowchart TB
-    subgraph NodeResp[Node]
+    subgraph NodeResp [Node]
         CTX[shared zmq.asyncio.Context]
         PUBS[Publishers dict]
         SUBS[Subscribers dict]

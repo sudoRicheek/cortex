@@ -7,9 +7,9 @@ Cortex uses **ZeroMQ multipart messages**. Each publish is a list of frames, not
 ```mermaid
 flowchart LR
     F0["Frame 0<br/>topic bytes"] --> F1
-    F1["Frame 1<br/>header (24B)<br/>fingerprint • ts_ns • seq"] --> F2
-    F2["Frame 2<br/>msgpack metadata<br/>(ordered field values)"] --> F3
-    F3["Frame 3..N<br/>raw array buffers<br/>(OOB, zero-copy)"]
+    F1["Frame 1<br/>header · 24 B<br/>fingerprint · ts_ns · seq"] --> F2
+    F2["Frame 2<br/>msgpack metadata<br/>ordered field values"] --> F3
+    F3["Frame 3..N<br/>raw array buffers<br/>OOB · zero-copy"]
 ```
 
 | Frame   | Contents                     | Size         |
@@ -70,8 +70,8 @@ sequenceDiagram
     M->>S: values in declaration order
     S->>E: for each value, walk nested dicts/lists
     E-->>S: scalar stays inline; array → OOB descriptor + buffer appended
-    S-->>M: (metadata_bytes, [buf0, buf1, ...])
-    M-->>Z: Publisher sends [topic, header, metadata, *buffers]
+    S-->>M: returns metadata_bytes plus buf0, buf1, ...
+    M-->>Z: Publisher sends topic, header, metadata, then each buffer
 ```
 
 ## Legacy single-blob path
