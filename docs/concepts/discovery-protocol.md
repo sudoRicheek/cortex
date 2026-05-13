@@ -36,7 +36,7 @@ sequenceDiagram
 
     P->>P: bind PUB socket on ipc:///tmp/cortex/topics/<node>__<topic>.sock
     P->>D: REQ → DiscoveryRequest(REGISTER_TOPIC, TopicInfo{...})
-    D->>D: if topic_name absent: insert; else compare publisher_node
+    D->>D: if topic_name absent: insert, else compare publisher_node
     alt new
         D-->>P: OK "Registered topic: /x"
     else same publisher re-registering

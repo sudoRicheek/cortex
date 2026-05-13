@@ -69,7 +69,7 @@ sequenceDiagram
     U->>M: build header + collect field values
     M->>S: values in declaration order
     S->>E: for each value, walk nested dicts/lists
-    E-->>S: scalar stays inline; array → OOB descriptor + buffer appended
+    E-->>S: scalar stays inline, array → OOB descriptor + buffer appended
     S-->>M: returns metadata_bytes plus buf0, buf1, ...
     M-->>Z: Publisher sends topic, header, metadata, then each buffer
 ```
