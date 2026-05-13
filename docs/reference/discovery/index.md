@@ -1,0 +1,3 @@
+# `cortex.discovery`
+
+::: cortex.discovery

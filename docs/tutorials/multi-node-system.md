@@ -1,8 +1,6 @@
 # Multi-node system
 
-A walk-through of [`examples/multi_node_system.py`](https://github.com/sudoRicheek/cortex/blob/main/examples/multi_node_system.py) —
-a sensor → processor → monitor pipeline with custom messages, multiple
-publishers and subscribers, and periodic status reporting.
+Walk-through of [`examples/multi_node_system.py`](https://github.com/sudoRicheek/cortex/blob/main/examples/multi_node_system.py) — a sensor → processor → monitor pipeline with custom messages and multiple pub/subs.
 
 ## Topology
 
@@ -21,14 +19,11 @@ flowchart LR
     Mon -- "/system/status<br/>1 Hz" --> World((world))
 ```
 
-Four nodes run in a single Python process, each on the same asyncio event
-loop via `asyncio.gather`. Cortex's IPC transport does not care that they
-share a process — the data still rides through real ZMQ sockets.
+Four nodes share one asyncio event loop via `asyncio.gather`. Cortex IPC works just as well between nodes in one process as between separate processes — data still rides ZMQ sockets either way.
 
 ## Message schema
 
-Three custom message types share a module so every node gets the same
-fingerprints:
+Three dataclasses shared between every node so fingerprints match:
 
 ```python
 @dataclass
@@ -75,9 +70,9 @@ class SensorNode(Node):
         ))
 ```
 
-## Processor node
+## Processor
 
-Subscribes to every sensor and republishes filtered data:
+Subscribes to every sensor, filters, republishes:
 
 ```python
 class ProcessorNode(Node):
@@ -104,9 +99,9 @@ class ProcessorNode(Node):
         ))
 ```
 
-## Monitor node
+## Monitor
 
-Tracks throughput and publishes a periodic status message:
+Tracks throughput, emits status at 1 Hz:
 
 ```python
 class MonitorNode(Node):
@@ -117,7 +112,7 @@ class MonitorNode(Node):
         self.create_timer(1.0, self._publish_status)
 ```
 
-## Running the whole graph
+## Run the graph
 
 ```python
 async def main():
@@ -154,13 +149,13 @@ sequenceDiagram
     M->>M: publish SystemStatus (1 Hz)
 ```
 
-## Run it yourself
+## Run it
 
 ```bash
-# Terminal 1
+# terminal 1
 cortex-discovery
 
-# Terminal 2
+# terminal 2
 python examples/multi_node_system.py
 ```
 

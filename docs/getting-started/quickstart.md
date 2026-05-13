@@ -1,22 +1,22 @@
 # Quickstart
 
-A three-terminal pub/sub loop in under two minutes.
+A three-terminal pub/sub loop.
 
-## 1. Start the discovery daemon
+## 1. Discovery daemon
 
 ```bash
 cortex-discovery
 ```
 
-Leave it running. This is the single service that maps topic names to
-IPC endpoints.
+Leave it running. This is the service that maps topic names to IPC endpoints.
 
 ## 2. Publisher
 
 ```python title="pub.py"
 import numpy as np
 import cortex
-from cortex import Node, ArrayMessage
+from cortex import Node
+from cortex.messages.standard import ArrayMessage
 
 
 class SensorNode(Node):
@@ -52,8 +52,9 @@ python pub.py
 
 ```python title="sub.py"
 import cortex
-from cortex import Node, ArrayMessage
+from cortex import Node
 from cortex.messages.base import MessageHeader
+from cortex.messages.standard import ArrayMessage
 
 
 async def on_data(msg: ArrayMessage, header: MessageHeader):
@@ -82,7 +83,7 @@ if __name__ == "__main__":
 python sub.py
 ```
 
-## What just happened
+## What happened
 
 ```mermaid
 sequenceDiagram
@@ -100,5 +101,4 @@ sequenceDiagram
     end
 ```
 
-See [Concepts → Architecture](../concepts/architecture.md) for the end-to-end
-picture, or jump into a [custom message tutorial](../tutorials/custom-messages.md).
+Next: [Concepts → Architecture](../concepts/architecture.md) or [Tutorials → Custom messages](../tutorials/custom-messages.md).

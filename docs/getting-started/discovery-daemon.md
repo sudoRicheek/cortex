@@ -1,24 +1,22 @@
-# Running the Discovery Daemon
+# Discovery daemon
 
-The discovery daemon is a lightweight REP service that maintains the registry
-of active topics. Publishers register on startup; subscribers look up the
-endpoint and connect directly.
+A REP service maintaining the registry of active topics. Publishers register on startup; subscribers look up the endpoint and connect directly.
 
 ## Start
 
-=== "As a script"
+=== "Script"
 
     ```bash
     cortex-discovery
     ```
 
-=== "As a module"
+=== "Module"
 
     ```bash
     python -m cortex.discovery.daemon
     ```
 
-=== "As a systemd service"
+=== "systemd"
 
     ```ini title="/etc/systemd/system/cortex-discovery.service"
     [Unit]
@@ -35,7 +33,7 @@ endpoint and connect directly.
     WantedBy=multi-user.target
     ```
 
-## Command-line options
+## Flags
 
 | Flag          | Default                                | Description                     |
 | ------------- | -------------------------------------- | ------------------------------- |
@@ -56,14 +54,10 @@ stateDiagram-v2
 ## Troubleshooting
 
 **"Address already in use"**
-:   Another daemon (or a stale socket file) is holding the path.
-    `rm /tmp/cortex/discovery.sock` and restart.
+:   Another daemon or a stale socket file is holding the path. `rm /tmp/cortex/discovery.sock` and restart.
 
 **Subscribers time out looking up topics**
-:   Daemon not running, or publisher failed to register. Run with
-    `--log-level DEBUG` and watch for REGISTER / LOOKUP lines.
+:   Daemon not running, or the publisher failed to register. Run with `--log-level DEBUG` and watch for REGISTER / LOOKUP lines.
 
 **Daemon crash leaves stale entries**
-:   Today, entries are only removed on explicit UNREGISTER. A crashed
-    publisher's topic stays in the registry pointing at a dead socket.
-    Restarting the daemon clears all state.
+:   Entries are only removed on explicit UNREGISTER. A crashed publisher's topic stays in the registry pointing at a dead socket. Restarting the daemon clears all state.

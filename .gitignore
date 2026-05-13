@@ -206,3 +206,8 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Internal-only docs (not published)
+/docs/critique.md
+/docs/plans/
+/docs/TODO

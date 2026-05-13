@@ -1,8 +1,6 @@
 # Architecture
 
-Cortex has three moving parts: the **discovery daemon**, **publisher** nodes,
-and **subscriber** nodes. They coordinate over ZeroMQ — a REQ/REP control plane
-for discovery and a PUB/SUB data plane for messages.
+Three moving parts: the **discovery daemon**, **publisher** nodes, **subscriber** nodes. They coordinate over ZeroMQ — REQ/REP for discovery (control plane), PUB/SUB for messages (data plane).
 
 ## High-level view
 
@@ -29,7 +27,7 @@ flowchart TB
 
 ## Message journey
 
-Tracing one frame end to end:
+One frame, end to end:
 
 ```mermaid
 sequenceDiagram
@@ -53,8 +51,7 @@ sequenceDiagram
     Sub->>CB: await callback(msg, header)
 ```
 
-Key invariant: array buffers ride as **separate ZMQ frames**, not inline in the
-metadata. See [Message wire format](message-wire-format.md).
+Array buffers ride as **separate ZMQ frames**, not inline in the metadata. See [Message wire format](message-wire-format.md).
 
 ## Process layout
 
@@ -84,9 +81,7 @@ flowchart LR
     PUB2 -.->|IPC| SUB2
 ```
 
-Each topic gets its own IPC socket under `/tmp/cortex/topics/`. A single `Node`
-shares one `zmq.asyncio.Context` across all its publishers and subscribers to
-avoid per-socket io thread overhead.
+Each topic gets its own IPC socket under `/tmp/cortex/topics/`. A `Node` shares one `zmq.asyncio.Context` across all its publishers and subscribers to avoid per-socket io thread overhead.
 
 ## See also
 

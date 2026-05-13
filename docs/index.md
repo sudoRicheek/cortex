@@ -1,36 +1,34 @@
 # Cortex
 
-**A lightweight Python framework for inter-process communication over ZeroMQ.**
-
-Cortex is a pub/sub layer designed to feel obvious. Nodes publish typed messages on named topics; subscribers receive them via async callbacks. A tiny discovery daemon tells subscribers where to connect. Native support for NumPy arrays and PyTorch tensors keeps robotics- and ML-shaped payloads fast.
+Lightweight Python pub/sub over ZeroMQ IPC. Typed messages, automatic topic discovery, zero-copy frames for NumPy and PyTorch.
 
 <div class="grid cards" markdown>
 
 -   :material-rocket-launch-outline: **[Getting started](getting-started/quickstart.md)**
 
-    Install, start the daemon, publish your first message in under two minutes.
+    Install, start the daemon, publish your first message.
 
 -   :material-book-open-variant: **[Concepts](concepts/architecture.md)**
 
-    How the wire format, fingerprinting, discovery handshake, and async execution fit together.
+    Wire format, fingerprinting, discovery handshake, async execution.
 
 -   :material-puzzle-outline: **[Components](components/messages.md)**
 
-    Deep dives into the Messages, Discovery, and Core modules.
+    Messages, discovery, publisher/subscriber, node + executors.
 
 -   :material-api: **[API reference](reference/index.md)**
 
-    Auto-generated from the source. Always matches the code on `main`.
+    Auto-generated from source.
 
 </div>
 
-## Highlights
+## What you get
 
-- **Publisher / Subscriber pattern** over ZeroMQ PUB/SUB sockets.
-- **Discovery service** for automatic topic → endpoint resolution.
-- **IPC transport** with zero-copy frames for large NumPy / PyTorch payloads.
-- **64-bit fingerprint hashing** for fast message-type identification.
-- **uvloop-backed async** on Linux/macOS for lower tail latency.
+- PUB/SUB over ZeroMQ IPC.
+- A discovery daemon for topic → endpoint resolution.
+- 64-bit message fingerprints; strict type matching.
+- Zero-copy out-of-band frames for NumPy arrays and PyTorch tensors.
+- Async (`asyncio` + `uvloop`) and synchronous subscriber modes.
 
 ## Minimal example
 
@@ -39,7 +37,8 @@ Cortex is a pub/sub layer designed to feel obvious. Nodes publish typed messages
     ```python
     import numpy as np
     import cortex
-    from cortex import Node, ArrayMessage
+    from cortex import Node
+    from cortex.messages.standard import ArrayMessage
 
 
     class Cam(Node):
@@ -59,8 +58,9 @@ Cortex is a pub/sub layer designed to feel obvious. Nodes publish typed messages
 
     ```python
     import cortex
-    from cortex import Node, ArrayMessage
+    from cortex import Node
     from cortex.messages.base import MessageHeader
+    from cortex.messages.standard import ArrayMessage
 
 
     async def on_frame(msg: ArrayMessage, header: MessageHeader):
@@ -76,8 +76,14 @@ Cortex is a pub/sub layer designed to feel obvious. Nodes publish typed messages
     cortex.run(Viewer().run())
     ```
 
-## Project status
+Run `cortex-discovery` once in the background, then run both files.
 
-Cortex targets single-host process graphs today. See [design-review.md](design-review.md)
-and [critique.md](critique.md) for an honest account of current limits and the
-roadmap toward multi-host robotics use.
+## C++ implementation
+
+A standalone C++ port of the wire format (header, msgpack metadata, OOB buffers, discovery client, pub/sub) lives in [`cortex_wire_cpp/`](https://github.com/sudoRicheek/cortex/tree/main/cortex_wire_cpp). It's pure CMake, no ROS dependency, and exists for native consumers that want sub-millisecond latency without Python in the loop. See the [`README`](https://github.com/sudoRicheek/cortex/blob/main/cortex_wire_cpp/README.md) for the layout and [`DOCS.md`](https://github.com/sudoRicheek/cortex/blob/main/cortex_wire_cpp/DOCS.md) for the API.
+
+A ROS 2 bridge built on top is at [`ros2_bridge/`](https://github.com/sudoRicheek/cortex/tree/main/ros2_bridge).
+
+## Scope
+
+Cortex targets single-host process graphs. Multi-host is not supported today.

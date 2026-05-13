@@ -1,13 +1,9 @@
 # Fingerprinting
 
-Every message class gets a **64-bit identifier** derived from its name and
-field schema. The fingerprint rides in the header of every published message
-and does two jobs:
+Every message class has a 64-bit identifier derived from its name + field schema. The fingerprint rides in every message header and does two jobs:
 
-1. **Type dispatch** — `Message.decode(bytes)` looks up the right class in the
-   [`MessageType`][cortex.messages.base.MessageType] registry.
-2. **Compatibility check** — subscribers verify that the topic they looked up
-   advertises the same fingerprint as the type they were written against.
+1. **Type dispatch** — `Message.decode(bytes)` looks up the class in [`MessageType`][cortex.messages.base.MessageType].
+2. **Compatibility check** — subscribers verify the topic advertises the same fingerprint as their compiled-against type.
 
 ## Derivation
 
@@ -26,14 +22,11 @@ canonical = f"{cls.__module__}.{cls.__qualname__}|{','.join(sorted('name:type'))
 fingerprint = int.from_bytes(sha256(canonical.encode()).digest()[:8], "big")
 ```
 
-The result is cached per-class in `_fingerprint_cache`, computed once lazily.
+Cached per-class in `_fingerprint_cache`, computed once lazily.
 
 ## Registry
 
-`Message.__init_subclass__` auto-registers every concrete subclass into
-[`MessageType._registry`][cortex.messages.base.MessageType] keyed by
-fingerprint. Nothing else to do — decorating your dataclass with
-`@dataclass` and inheriting from `Message` is enough.
+`Message.__init_subclass__` auto-registers every concrete subclass into [`MessageType._registry`][cortex.messages.base.MessageType] keyed by fingerprint. `@dataclass` + inherit from `Message` is enough.
 
 ```python
 from dataclasses import dataclass
@@ -49,23 +42,21 @@ print(hex(JointState.fingerprint()))
 
 ## When fingerprints change
 
-The fingerprint is **not stable across edits that touch**:
+Not stable across:
 
-- Module path or class name (`cortex.messages.standard.ArrayMessage` renamed
-  anywhere).
+- Module path or class name.
 - Field names.
-- Field *type annotations as spelled* (see the PEP 563 caveat below).
+- Field *type annotations as spelled* (see PEP 563 caveat below).
 
-It is stable across:
+Stable across:
 
 - Adding/removing unrelated classes.
 - Reordering methods.
-- Changing docstrings or default values.
+- Docstring or default-value changes.
 
 ## Subscriber check
 
-On connect, the subscriber compares the topic's advertised fingerprint against
-the one it computed from its message class:
+On connect, the subscriber compares the topic's advertised fingerprint against the one it computes from its message class:
 
 ```mermaid
 sequenceDiagram
@@ -82,23 +73,14 @@ sequenceDiagram
     end
 ```
 
-!!! warning "Today: mismatch is a warning, not an error"
-    A fingerprint mismatch currently only logs a warning — see [critique.md](../critique.md).
-    Downstream decoding will fail hard. Until that is tightened, prefer to
-    re-exchange type definitions between processes rather than rely on this guard.
+!!! warning "Mismatch is a warning, not an error"
+    A fingerprint mismatch on the async subscriber path logs a warning and continues; decoding will likely fail afterward. Sync subscribers (`mode='sync'`) raise on mismatch. To get the strict behavior on async subscribers, pass `strict_fingerprint=True`.
 
 ## PEP 563 caveat
 
-`field.type` may be a **string** (under `from __future__ import annotations`)
-or a **real type** otherwise. The canonical string differs in the two cases,
-so the same class can fingerprint differently across import environments.
-
-When defining messages shared between processes, either use the same import
-style in both, or rely on the runtime `typing.get_type_hints(cls)` equivalent
-once that lands upstream.
+`field.type` may be a **string** (under `from __future__ import annotations`) or a **real type** otherwise. The canonical string differs in the two cases, so the same class can fingerprint differently across import environments. Use the same import style on both sides.
 
 ## See also
 
 - [`cortex.utils.hashing`](../reference/utils/hashing.md) — `compute_fingerprint`, cache helpers
 - [Message wire format](message-wire-format.md)
-- [Critique § code-level issue 13](../critique.md)

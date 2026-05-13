@@ -1,9 +1,6 @@
 # Custom messages
 
-A **message** in Cortex is any dataclass that inherits from
-[`Message`][cortex.messages.base.Message]. Auto-registration, fingerprinting,
-and (de)serialization are all derived from the dataclass definition — you
-write the schema once, publishers and subscribers speak the same wire format.
+A message is any `@dataclass` that inherits from [`Message`][cortex.messages.base.Message]. Registration, fingerprinting, and (de)serialization are derived from the dataclass definition.
 
 ## Define
 
@@ -24,10 +21,7 @@ class RobotState(Message):
 ```
 
 !!! tip "Shared module"
-    Put your message definitions in a module **both** the publisher and
-    subscriber import. The fingerprint is computed from
-    `module.qualname` + field names/types; an identical re-declaration in
-    two different modules produces **different** fingerprints.
+    Put message definitions in a module **both** the publisher and subscriber import. The fingerprint is `module.qualname` + field names/types — declaring the same class in two different modules yields two different fingerprints.
 
 ## Publish
 
@@ -84,7 +78,7 @@ if __name__ == "__main__":
     cortex.run(Monitor().run())
 ```
 
-## How the dataclass becomes a wire message
+## Dataclass → wire
 
 ```mermaid
 flowchart LR
@@ -99,42 +93,37 @@ flowchart LR
     Bufs --> Wire
 ```
 
-See [Concepts → Message wire format](../concepts/message-wire-format.md) for
-the full picture.
+See [Message wire format](../concepts/message-wire-format.md) for the full encoding.
 
 ## Supported field types
 
 | Field type                      | Notes                                                   |
 | ------------------------------- | ------------------------------------------------------- |
-| `int` / `float` / `bool` / `str`| Plain msgpack primitives                                |
+| `int` / `float` / `bool` / `str`| msgpack primitives                                       |
 | `bytes`                         | msgpack bin                                             |
-| `list[...]` / `tuple[...]`      | Walked recursively                                      |
-| `dict[str, Any]`                | Walked recursively; arrays inside are still OOB         |
+| `list[...]` / `tuple[...]`      | walked recursively                                      |
+| `dict[str, Any]`                | walked recursively; arrays inside still go OOB          |
 | `np.ndarray`                    | OOB frame; zero-copy decode                             |
 | `torch.Tensor`                  | OOB frame; CPU-transported, device restored on decode   |
-| Optional nested `Message`       | Not first-class today — flatten instead                 |
+| Nested `Message`                | not supported — flatten instead                          |
 
-## Evolution: what breaks the fingerprint
+## What changes the fingerprint
 
-Changing any of these **changes the fingerprint** and makes old and new
-publishers/subscribers incompatible:
+Any of these makes old and new publishers/subscribers incompatible:
 
 - Renaming the class, its module, or any field
 - Adding a field (even with a default)
 - Removing a field
 - Changing a field's annotation text
 
-Safe to change without breaking:
+Safe to change:
 
 - Reordering methods, adding methods
 - Editing docstrings or defaults
 - Changing unrelated classes in the same module
 
-See [critique § 22](../critique.md) for the roadmap on first-class schema
-evolution.
-
 ## See also
 
 - [Concepts → Fingerprinting](../concepts/fingerprinting.md)
 - [Components → Messages](../components/messages.md)
-- [Tutorials → Multi-node system](multi-node-system.md) for custom messages used across multiple nodes
+- [Tutorials → Multi-node system](multi-node-system.md)

@@ -4,10 +4,7 @@
 > [`cortex.discovery.client`](../reference/discovery/client.md),
 > [`cortex.discovery.protocol`](../reference/discovery/protocol.md)
 
-Discovery is Cortex's control plane: a single long-lived process that maps
-topic names to ZMQ endpoints. It sits off the data path — once a subscriber
-has an endpoint, messages flow publisher → subscriber directly without the
-daemon's involvement.
+A single long-lived process mapping topic names to ZMQ endpoints. Off the data path — once a subscriber has an endpoint, messages flow publisher → subscriber directly.
 
 ## Moving parts
 
@@ -25,21 +22,15 @@ flowchart LR
     PR -.-> CL
 ```
 
-Everyone agrees on the wire format via `protocol.py`. The daemon runs a
-single-threaded REP loop. The client speaks REQ from every publisher and
-subscriber in the graph.
+Both sides agree on the wire format via `protocol.py`. The daemon runs a single-threaded REP loop; publishers/subscribers speak REQ.
 
 ## Daemon
 
-Implemented in [`DiscoveryDaemon`][cortex.discovery.daemon.DiscoveryDaemon].
-
-Key behaviors:
+[`DiscoveryDaemon`][cortex.discovery.daemon.DiscoveryDaemon]:
 
 - Binds `zmq.REP` at `ipc:///tmp/cortex/discovery.sock` by default.
-- Maintains `_topics: dict[str, TopicInfo]` — **one publisher per topic**.
-- `RCVTIMEO=1000` on the socket so the loop can check `_running` for clean
-  Ctrl-C. This also means the daemon is naturally single-request-at-a-time —
-  a slow client blocks all others.
+- Maintains `_topics: dict[str, TopicInfo]` — one publisher per topic.
+- `RCVTIMEO=1000` so the loop can check `_running` for clean Ctrl-C. Single request at a time — a slow client blocks others.
 
 ### State transitions
 
@@ -66,12 +57,7 @@ stateDiagram-v2
 
 ## Client
 
-Implemented in [`DiscoveryClient`][cortex.discovery.client.DiscoveryClient].
-
-Thin REQ wrapper around the protocol. Important operational detail: **REQ
-sockets stick after a timeout** — they block subsequent sends waiting for a
-reply that never came. The client handles this by closing and recreating the
-socket on every timeout (`_reconnect`). Callers don't see it.
+[`DiscoveryClient`][cortex.discovery.client.DiscoveryClient] is a thin REQ wrapper. Operational detail: **REQ sockets stick after a timeout** — they block subsequent sends waiting for a reply that never came. The client closes and recreates the socket on every timeout (`_reconnect`); callers don't see it.
 
 ### REQ timeout recovery
 
@@ -98,7 +84,7 @@ flowchart TD
 
 ## Protocol
 
-Implemented in [`cortex.discovery.protocol`](../reference/discovery/protocol.md).
+[`cortex.discovery.protocol`](../reference/discovery/protocol.md):
 
 | Type                                                                 | Purpose                                   |
 | -------------------------------------------------------------------- | ----------------------------------------- |
@@ -108,21 +94,16 @@ Implemented in [`cortex.discovery.protocol`](../reference/discovery/protocol.md)
 | [`DiscoveryRequest`][cortex.discovery.protocol.DiscoveryRequest]     | command + optional topic_info / topic_name |
 | [`DiscoveryResponse`][cortex.discovery.protocol.DiscoveryResponse]   | status, message, topic_info, topics        |
 
-All payloads are msgpack. `TopicInfo` is nested as a packed sub-blob so
-discovery responses stay flat.
+All payloads are msgpack. `TopicInfo` is nested as a packed sub-blob so responses stay flat.
 
-## Known limitations
+## Limitations
 
-Summarized here, detailed in [critique.md](../critique.md):
-
-- One-publisher-per-topic.
-- No heartbeats or leases — crashed publishers leave stale entries.
-- Single-threaded REP — slow client starves others.
-- `retries=1` in the client is a fencepost; effective retries today is zero.
-- Daemon state lost on restart; publishers do not auto-re-register.
+- One publisher per topic.
+- No heartbeats or leases — a crashed publisher leaves a stale entry.
+- Single-threaded REP — a slow client blocks others.
+- Daemon state is lost on restart; publishers don't auto-re-register.
 
 ## See also
 
 - [Concepts → Discovery protocol](../concepts/discovery-protocol.md)
 - [Getting started → Running the discovery daemon](../getting-started/discovery-daemon.md)
-- [Critique](../critique.md)
