@@ -17,6 +17,7 @@ Usage:
     --check  Exit non-zero if the generated tree differs from what is
              checked in.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -45,8 +46,9 @@ def collect_modules() -> list[tuple[Path, str]]:
 
         if parts[-1] == "__init__":
             parts = parts[:-1]
-            doc_path = doc_path.with_name("index.md") if doc_path.parts else Path(
-                "index.md")
+            doc_path = (
+                doc_path.with_name("index.md") if doc_path.parts else Path("index.md")
+            )
         elif parts[-1].startswith("_"):
             continue
 
@@ -113,10 +115,11 @@ def write_pages(pages: dict[Path, str]) -> None:
 def check_pages(pages: dict[Path, str]) -> int:
     drift: list[str] = []
     expected_paths = {Path(p) for p in pages}
-    actual_paths = {
-        p.relative_to(REFERENCE_DIR)
-        for p in REFERENCE_DIR.rglob("*.md")
-    } if REFERENCE_DIR.exists() else set()
+    actual_paths = (
+        {p.relative_to(REFERENCE_DIR) for p in REFERENCE_DIR.rglob("*.md")}
+        if REFERENCE_DIR.exists()
+        else set()
+    )
 
     for missing in sorted(expected_paths - actual_paths):
         drift.append(f"missing: docs/reference/{missing.as_posix()}")
@@ -128,7 +131,9 @@ def check_pages(pages: dict[Path, str]) -> int:
             drift.append(f"out of date: docs/reference/{rel.as_posix()}")
 
     if drift:
-        print("error: docs/reference/ is out of sync with src/cortex/:", file=sys.stderr)
+        print(
+            "error: docs/reference/ is out of sync with src/cortex/:", file=sys.stderr
+        )
         for line in drift:
             print(f"  - {line}", file=sys.stderr)
         print(
