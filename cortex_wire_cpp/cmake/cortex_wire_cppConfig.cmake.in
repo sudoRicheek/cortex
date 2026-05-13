@@ -1,0 +1,16 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(cppzmq)
+find_dependency(Threads)
+# Plain find_package (CONFIG mode, QUIET) so REQUIRED is not propagated from
+# the consumer's find_package(cortex_wire_cpp REQUIRED) call. Ubuntu 22.04's
+# libmsgpack-dev ships header-only without a CMake config — the target's
+# install-interface include directory carries the msgpack headers in that
+# case, so consumers don't need to re-find them.
+find_package(msgpack-cxx QUIET CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/cortex_wire_cppTargets.cmake")
+
+check_required_components(cortex_wire_cpp)
