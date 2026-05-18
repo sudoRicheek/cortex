@@ -6,6 +6,7 @@ Uses asyncio for cooperative multitasking - ideal for Python < 3.14.
 """
 
 import asyncio
+import inspect
 import logging
 import threading
 from collections.abc import Callable
@@ -14,7 +15,7 @@ from typing import Literal
 import zmq
 import zmq.asyncio
 
-from cortex.core.executor import RateExecutor
+from cortex.core.executor import RateExecutor, SyncRateExecutor
 from cortex.core.publisher import Publisher
 from cortex.core.subscriber import Subscriber
 from cortex.core.sync_subscriber import SyncMessageCallback, ThreadedSubscriber
@@ -24,6 +25,7 @@ from cortex.messages.base import Message
 
 SubscriberMode = Literal["async", "sync"]
 PublisherMode = Literal["async", "sync"]
+TimerMode = Literal["async", "sync"]
 
 logger = logging.getLogger("cortex.node")
 
@@ -82,6 +84,11 @@ class Node:
 
         # Timer executors: (period, callback, RateExecutor)
         self._timers: list[tuple[float, AsyncCallback, RateExecutor]] = []
+
+        # Sync timer executors run on dedicated OS threads spawned via
+        # ``spawn_thread`` when the node starts. Tracked separately so they
+        # don't gate ``spin()`` / ``close_sync()`` the way async timers do.
+        self._sync_timers: list[tuple[float, Callable[[], None], SyncRateExecutor]] = []
 
         # Async subscribers with callbacks need their receive loop scheduled
         # as an asyncio task; sync subscribers run on their own OS thread and
@@ -338,20 +345,45 @@ class Node:
     def create_timer(
         self,
         period: float,
-        callback: AsyncCallback,
+        callback: AsyncCallback | Callable[[], None],
+        mode: TimerMode = "async",
     ) -> None:
         """
         Create a periodic timer.
 
         Args:
-            period: Timer period in seconds
-            callback: Async function to call on each timer tick
+            period: Timer period in seconds.
+            callback: Function to call on each tick. ``mode='async'`` expects
+                an async callable; ``mode='sync'`` expects a plain (non-async)
+                callable and rejects coroutine functions.
+            mode: ``'async'`` (default) schedules the timer on the node's
+                asyncio loop via :class:`RateExecutor`. ``'sync'`` spawns a
+                dedicated OS thread running :class:`SyncRateExecutor`, which
+                bypasses the asyncio scheduler.
         """
         rate_hz = 1.0 / period
-        executor = RateExecutor(callback, rate_hz=rate_hz)
-        self._timers.append((period, callback, executor))
 
-        logger.debug(f"Created timer with period {period}s ({rate_hz} Hz)")
+        if mode == "async":
+            if not inspect.iscoroutinefunction(callback):
+                raise TypeError(
+                    "Async timer requires an `async def` callback; "
+                    f"got {callback!r}. Use mode='sync' for plain callables."
+                )
+            async_executor = RateExecutor(callback, rate_hz=rate_hz)
+            self._timers.append((period, callback, async_executor))
+        elif mode == "sync":
+            if inspect.iscoroutinefunction(callback):
+                raise TypeError(
+                    "Sync timer requires a plain (non-async) callback; "
+                    f"got coroutine function {callback!r}. "
+                    "Drop the `async` keyword or use mode='async'."
+                )
+            sync_executor = SyncRateExecutor(callback, rate_hz=rate_hz)
+            self._sync_timers.append((period, callback, sync_executor))
+        else:
+            raise ValueError(f"Unknown timer mode: {mode!r}")
+
+        logger.debug("Created %s timer with period %ss (%s Hz)", mode, period, rate_hz)
 
     async def run(self) -> None:
         """
@@ -368,6 +400,11 @@ class Node:
         for sub in self._sync_subscribers:
             sub.start()
 
+        # Sync timers live on their own OS threads, joined via the standard
+        # spawn_thread machinery. Start them before the async tasks so a
+        # control-loop tick can fire before the first awaited yield.
+        self._start_sync_timer_threads()
+
         # Start all timer executors
         for _period, _callback, executor in self._timers:
             self._tasks.append(asyncio.create_task(executor.run()))
@@ -377,9 +414,9 @@ class Node:
             self._tasks.append(asyncio.create_task(sub.run()))
 
         # If the node has no async work but does have sync work to manage
-        # (sync subscribers and/or threads spawned via spawn_thread), keep
-        # run() alive so the asyncio side does not fall through and trip
-        # the finally block. Released by stop() / close().
+        # (sync subscribers, sync timers, or threads spawned via
+        # spawn_thread), keep run() alive so the asyncio side does not fall
+        # through and trip the finally block. Released by stop() / close().
         has_sync_work = bool(self._sync_subscribers) or bool(self._spawned_threads)
         if not self._tasks and has_sync_work:
             self._stop_event = asyncio.Event()
@@ -401,6 +438,8 @@ class Node:
             # Stop all executors
             for _period, _callback, executor in self._timers:
                 executor.stop()
+            for _period, _callback, sync_executor in self._sync_timers:
+                sync_executor.stop()
             for sub in self._active_subscribers:
                 sub.stop()
             for sub in self._sync_subscribers:
@@ -414,6 +453,8 @@ class Node:
         # Stop all executors
         for _period, _callback, executor in self._timers:
             executor.stop()
+        for _period, _callback, sync_executor in self._sync_timers:
+            sync_executor.stop()
         for sub in self._active_subscribers:
             sub.stop()
         for sub in self._sync_subscribers:
@@ -462,6 +503,7 @@ class Node:
         self._spawned_threads.clear()
 
         self._timers.clear()
+        self._sync_timers.clear()
         self._active_subscribers.clear()
         self._sync_subscribers.clear()
 
@@ -508,6 +550,24 @@ class Node:
         """True if the node has anything that needs an asyncio loop."""
         return bool(self._timers) or bool(self._active_subscribers)
 
+    def _start_sync_timer_threads(self) -> None:
+        """Spawn one worker thread per registered sync timer.
+
+        Sync timers own their own stop event (set by ``executor.stop()``)
+        so we don't go through :meth:`spawn_thread` — that helper injects
+        the node's shared stop event as ``target``'s first arg, which the
+        executor doesn't need. We still register each thread in
+        ``_spawned_threads`` so ``close`` / ``close_sync`` join them.
+        """
+        for period, _callback, executor in self._sync_timers:
+            thread_name = f"{self.name}-timer-{period}s"
+            thread = threading.Thread(
+                target=executor.run, name=thread_name, daemon=False
+            )
+            thread.start()
+            self._spawned_threads.append(thread)
+            logger.info("Started sync timer thread %s", thread_name)
+
     def spin(self, timeout: float | None = None) -> None:
         """Block the calling thread until the node is stopped.
 
@@ -549,19 +609,25 @@ class Node:
         for sub in self._sync_subscribers:
             sub.start()
 
+        # Spawn one thread per sync timer; each executor owns its own stop
+        # event, and the threads are joined by close()/close_sync().
+        self._start_sync_timer_threads()
+
         logger.info(
-            "Node %s spinning with %d sync subscribers and %d threads",
+            "Node %s spinning with %d sync subscribers, %d sync timers, %d threads",
             self.name,
             len(self._sync_subscribers),
+            len(self._sync_timers),
             len(self._spawned_threads),
         )
         try:
             # ``Event.wait`` is interruptible by Ctrl+C on the main thread.
             self._sync_stop_event.wait(timeout=timeout)
         finally:
-            self._running = False
-            for sub in self._sync_subscribers:
-                sub.stop()
+            # Delegate teardown to stop() so sync timers, sync subscribers,
+            # and spawned threads all get their stop signal — sync timers
+            # no longer watch ``_sync_stop_event`` directly so this matters.
+            self.stop()
 
     def close_sync(self) -> None:
         """Sync counterpart to :meth:`close`.
@@ -584,6 +650,8 @@ class Node:
 
         # Signal everyone, then synchronously join.
         self._sync_stop_event.set()
+        for _period, _callback, sync_executor in self._sync_timers:
+            sync_executor.stop()
         for sub in self._sync_subscribers:
             sub.stop()
         self._running = False
@@ -606,6 +674,7 @@ class Node:
         self._spawned_threads.clear()
 
         self._sync_subscribers.clear()
+        self._sync_timers.clear()
 
         # Term zmq contexts. The shared async context is never used by a
         # purely-sync node, but term it anyway so leaks don't accumulate.

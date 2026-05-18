@@ -2,8 +2,9 @@
 
 from cortex.core.executor import (
     AsyncExecutor,
-    BaseExecutor,
+    BaseAsyncExecutor,
     RateExecutor,
+    SyncRateExecutor,
 )
 from cortex.core.node import Node
 from cortex.core.publisher import Publisher
@@ -28,7 +29,8 @@ __all__ = [
     "AsyncCallback",
     "MessageCallback",
     "SyncMessageCallback",
-    "BaseExecutor",
+    "BaseAsyncExecutor",
     "AsyncExecutor",
     "RateExecutor",
+    "SyncRateExecutor",
 ]

@@ -7,15 +7,17 @@ faithful to Python's cooperative multitasking model.
 
 import asyncio
 import logging
+import threading
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 
 from cortex.core.types import AsyncCallback
 
 logger = logging.getLogger("cortex.executor")
 
 
-class BaseExecutor(ABC):
+class BaseAsyncExecutor(ABC):
     """
     Abstract base class for async executors.
 
@@ -60,7 +62,7 @@ class BaseExecutor(ABC):
         ...
 
 
-class AsyncExecutor(BaseExecutor):
+class AsyncExecutor(BaseAsyncExecutor):
     """Runs an async callable in a tight loop, yielding to the event loop.
 
     Used by :class:`cortex.core.subscriber.Subscriber` to drive its
@@ -91,7 +93,7 @@ class AsyncExecutor(BaseExecutor):
                 await asyncio.sleep(0)
 
 
-class RateExecutor(BaseExecutor):
+class RateExecutor(BaseAsyncExecutor):
     """Runs an async callable at a target rate in Hz.
 
     Uses ``time.perf_counter`` for scheduling. If a callback overruns the
@@ -149,3 +151,105 @@ class RateExecutor(BaseExecutor):
                 await asyncio.sleep(0)
 
             await asyncio.sleep(max(0, next_exec_time - time.perf_counter()))
+
+
+class SyncRateExecutor:
+    """Runs a plain (non-async) callable at a target rate in Hz, on a dedicated thread.
+
+    The sync analogue of :class:`RateExecutor`. Scheduling matches
+    ``RateExecutor`` exactly: a ``time.perf_counter`` grid with one
+    ``+ interval`` advance per invocation, so **missed ticks are not
+    skipped** when the callback overruns. Pair with
+    :meth:`cortex.core.node.Node.create_timer` (``mode='sync'``) for
+    control-loop work that should not pay the asyncio scheduler tax.
+
+    The lifecycle mirrors :class:`BaseAsyncExecutor`: ``start`` /
+    ``stop`` / ``run`` / ``running``. ``stop`` is thread-safe and sets
+    an internal :class:`threading.Event` that the run loop sleeps on,
+    so a sleeping run loop wakes immediately when another thread calls
+    :meth:`stop` — no polling, no shared external event needed.
+
+    Example:
+        ```python
+        def tick(*args):
+            print("tick", args)
+
+        executor = SyncRateExecutor(tick, rate_hz=1000.0)
+
+        t = threading.Thread(target=executor.run, args=("hello",))
+        t.start()
+        ...
+        executor.stop()
+        t.join()
+        ```
+    """
+
+    _MAX_SLEEP_S = 0.01
+
+    def __init__(self, func: Callable[..., None], rate_hz: float):
+        """
+        Args:
+            func: Plain (non-async) callable invoked once per tick. The
+                ``*args`` / ``**kwargs`` passed to :meth:`run` are
+                forwarded to ``func`` on every invocation.
+            rate_hz: Target execution rate in Hz.
+        """
+        self.func = func
+        self._rate_hz = rate_hz
+        self.interval = 1.0 / rate_hz
+        # Event is the single source of truth: set == stopped (the default
+        # construction state), clear == running. Doubles as the
+        # interruptible wait inside the run loop.
+        self._stop_event = threading.Event()
+        self._stop_event.set()
+
+    @property
+    def running(self) -> bool:
+        """True between :meth:`start` (or :meth:`run`) and :meth:`stop`."""
+        return not self._stop_event.is_set()
+
+    def start(self) -> None:
+        """Mark the executor as running.
+
+        :meth:`run` calls this automatically; exposed for symmetry with
+        :meth:`BaseAsyncExecutor.start` and to make restart-after-stop
+        safe.
+        """
+        self._stop_event.clear()
+
+    def stop(self) -> None:
+        """Request the run loop to exit promptly.
+
+        Thread-safe. A run loop currently sleeping wakes immediately.
+        Idempotent.
+        """
+        self._stop_event.set()
+
+    def run(self, *args, **kwargs) -> None:
+        """Drive ``func(*args, **kwargs)`` at ``rate_hz`` until :meth:`stop`.
+
+        Blocks the calling thread. ``*args`` / ``**kwargs`` are forwarded
+        to ``self.func`` on every tick (matches
+        :meth:`BaseAsyncExecutor.run`). Exceptions raised by the
+        callback are logged and the loop continues; only :meth:`stop`
+        exits cleanly.
+        """
+        self.start()
+        next_exec_time = time.perf_counter()
+        try:
+            while not self._stop_event.is_set():
+                if time.perf_counter() >= next_exec_time:
+                    try:
+                        self.func(*args, **kwargs)
+                    except Exception as exc:
+                        logger.error("Error in SyncRateExecutor: %s", exc)
+                    next_exec_time += self.interval
+
+                sleep = next_exec_time - time.perf_counter()
+                # Sleep on the stop event so stop() wakes us immediately.
+                # Cap each slice at _MAX_SLEEP_S so the loop also re-checks
+                # ``perf_counter`` on schedule when the callback is slow.
+                if sleep > 0 and self._stop_event.wait(min(sleep, self._MAX_SLEEP_S)):
+                    break
+        finally:
+            self._stop_event.set()
