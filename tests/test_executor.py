@@ -4,24 +4,30 @@ Tests for executor classes.
 
 import asyncio
 import contextlib
+import threading
 import time
 
 import pytest
 
-from cortex.core.executor import AsyncExecutor, BaseExecutor, RateExecutor
+from cortex.core.executor import (
+    AsyncExecutor,
+    BaseAsyncExecutor,
+    RateExecutor,
+    SyncRateExecutor,
+)
 
 
-class TestBaseExecutor:
-    """Tests for BaseExecutor base class."""
+class TestBaseAsyncExecutor:
+    """Tests for BaseAsyncExecutor base class."""
 
     def test_cannot_instantiate_base_executor(self):
-        """BaseExecutor is abstract and cannot be instantiated."""
+        """BaseAsyncExecutor is abstract and cannot be instantiated."""
 
         async def dummy():
             pass
 
         with pytest.raises(TypeError):
-            BaseExecutor(dummy)
+            BaseAsyncExecutor(dummy)
 
     def test_start_sets_running(self):
         """Start should set running to True."""
@@ -346,3 +352,199 @@ class TestExecutorIntegration:
 
         assert len(received_args) > 0
         assert received_args[0] == ((1, 2), {"key": "value"})
+
+
+class TestSyncRateExecutor:
+    """Tests for the sync analogue of :class:`RateExecutor`.
+
+    Run on a real worker thread so the timing matches production use; the
+    main test thread drives ``executor.stop()`` and joins.
+    """
+
+    @staticmethod
+    def _run_in_thread(executor: SyncRateExecutor, *args, **kwargs) -> threading.Thread:
+        thread = threading.Thread(target=executor.run, args=args, kwargs=kwargs)
+        thread.start()
+        return thread
+
+    def test_executes_at_target_rate(self):
+        """Should fire roughly ``rate_hz`` times per second."""
+        call_times: list[float] = []
+
+        def callback() -> None:
+            call_times.append(time.perf_counter())
+
+        executor = SyncRateExecutor(callback, rate_hz=20.0)  # 50 ms interval
+        thread = self._run_in_thread(executor)
+
+        time.sleep(0.5)
+        executor.stop()
+        thread.join(timeout=1.0)
+        assert not thread.is_alive()
+
+        # 20 Hz × 0.5 s = 10 ticks; allow generous slack for CI jitter.
+        assert 7 <= len(call_times) <= 15
+
+    def test_interval_property(self):
+        """``interval = 1 / rate_hz``."""
+
+        def callback() -> None:
+            pass
+
+        assert SyncRateExecutor(callback, rate_hz=10.0).interval == 0.1
+        assert SyncRateExecutor(callback, rate_hz=100.0).interval == 0.01
+
+    def test_handles_callback_exception(self):
+        """Exception in callback does not kill the loop."""
+        call_count = 0
+
+        def failing_callback() -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise ValueError("boom")
+
+        executor = SyncRateExecutor(failing_callback, rate_hz=200.0)
+        thread = self._run_in_thread(executor)
+
+        time.sleep(0.1)
+        executor.stop()
+        thread.join(timeout=1.0)
+
+        assert call_count >= 3
+
+    def test_does_not_skip_ticks_on_slow_callback(self):
+        """Slow callback: count advances even when each call overruns the interval.
+
+        Mirrors RateExecutor semantics — missed ticks are not skipped.
+        """
+        call_count = 0
+
+        def slow_callback() -> None:
+            nonlocal call_count
+            call_count += 1
+            time.sleep(0.02)  # 2x the nominal interval
+
+        executor = SyncRateExecutor(slow_callback, rate_hz=100.0)  # 10 ms
+        thread = self._run_in_thread(executor)
+
+        time.sleep(0.3)
+        executor.stop()
+        thread.join(timeout=1.0)
+
+        # ~15 calls if each takes ~20 ms over 300 ms. Loose bounds.
+        assert call_count >= 10
+
+    def test_stop_exits_promptly_at_low_rate(self):
+        """``stop()`` wakes the loop immediately even at a low rate.
+
+        At 5 Hz the nominal interval is 200 ms; ``stop()`` sets the
+        internal ``threading.Event`` so the sleeping loop wakes at once.
+        """
+
+        def callback() -> None:
+            pass
+
+        executor = SyncRateExecutor(callback, rate_hz=5.0)
+        thread = self._run_in_thread(executor)
+
+        # Let one tick fire, then trigger stop and time the join.
+        time.sleep(0.05)
+        t0 = time.perf_counter()
+        executor.stop()
+        thread.join(timeout=1.0)
+        elapsed = time.perf_counter() - t0
+
+        assert not thread.is_alive()
+        # Comfortably below the 200 ms interval.
+        assert elapsed < 0.1
+
+    def test_running_state_lifecycle(self):
+        """``running`` is False before/after, True while the thread is in the loop."""
+        observed: list[bool] = []
+        gate = threading.Event()
+
+        def callback() -> None:
+            observed.append(executor.running)
+            gate.set()
+
+        executor = SyncRateExecutor(callback, rate_hz=50.0)
+        assert not executor.running
+
+        thread = self._run_in_thread(executor)
+
+        assert gate.wait(timeout=1.0)
+        executor.stop()
+        thread.join(timeout=1.0)
+
+        assert observed and observed[0] is True
+        assert not executor.running
+
+    def test_forwards_args_and_kwargs(self):
+        """``run(*args, **kwargs)`` should forward to the callback every tick.
+
+        Mirrors :meth:`BaseAsyncExecutor.run`.
+        """
+        received: list[tuple] = []
+
+        def callback(*args, **kwargs) -> None:
+            received.append((args, kwargs))
+
+        executor = SyncRateExecutor(callback, rate_hz=200.0)
+        thread = self._run_in_thread(executor, 1, 2, key="value")
+
+        time.sleep(0.05)
+        executor.stop()
+        thread.join(timeout=1.0)
+
+        assert received, "callback never fired"
+        assert received[0] == ((1, 2), {"key": "value"})
+        # Every tick should see the same args.
+        assert all(r == ((1, 2), {"key": "value"}) for r in received)
+
+    def test_restart_after_stop(self):
+        """An executor stopped and re-run should fire again.
+
+        ``start()`` clears the internal event, so a fresh ``run`` does
+        not exit immediately because of a prior ``stop()``.
+        """
+        count = 0
+
+        def callback() -> None:
+            nonlocal count
+            count += 1
+
+        executor = SyncRateExecutor(callback, rate_hz=200.0)
+
+        thread = self._run_in_thread(executor)
+        time.sleep(0.05)
+        executor.stop()
+        thread.join(timeout=1.0)
+        first = count
+        assert first > 0
+
+        # Run again — must not exit at once.
+        thread = self._run_in_thread(executor)
+        time.sleep(0.05)
+        executor.stop()
+        thread.join(timeout=1.0)
+
+        assert count > first
+
+    def test_run_calls_start_and_clears_running_on_exit(self):
+        """``run`` should call ``start()`` and reset ``running`` on exit."""
+
+        def callback() -> None:
+            pass
+
+        executor = SyncRateExecutor(callback, rate_hz=200.0)
+        assert not executor.running
+
+        thread = self._run_in_thread(executor)
+        # Give the loop a moment to enter start().
+        time.sleep(0.02)
+        assert executor.running
+
+        executor.stop()
+        thread.join(timeout=1.0)
+        assert not executor.running

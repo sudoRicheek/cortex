@@ -377,6 +377,69 @@ def test_node_spin_pure_sync(discovery_daemon, discovery_address):
         pub_node.close_sync()
 
 
+def test_node_sync_timer_drives_sync_pubsub(discovery_daemon, discovery_address):
+    """End-to-end: ``create_timer(mode='sync')`` drives a sync pub → sync sub.
+
+    This is the replacement for the hand-rolled ``producer(stop, pub)``
+    pattern in ``test_node_spin_pure_sync`` — same shape, no manual
+    threading loop.
+    """
+    from cortex.core.node import Node
+
+    received: list[int] = []
+    received_lock = threading.Lock()
+
+    def cb(msg, _hdr):
+        with received_lock:
+            received.append(msg.seq)
+
+    pub_node = Node(name="timer_pub", discovery_address=discovery_address)
+    sub_node = Node(name="timer_sub", discovery_address=discovery_address)
+
+    try:
+        pub = pub_node.create_publisher(
+            topic_name="/test/timer_sync",
+            message_type=CmdMessage,
+            mode="sync",
+        )
+        time.sleep(0.1)
+
+        sub_node.create_subscriber(
+            topic_name="/test/timer_sync",
+            message_type=CmdMessage,
+            callback=cb,
+            mode="sync",
+            queue_size=64,
+            topic_timeout=2.0,
+        )
+
+        seq = 0
+
+        def tick() -> None:
+            nonlocal seq
+            pub.publish(CmdMessage(seq=seq, value=float(seq)))
+            seq += 1
+
+        # 500 Hz timer; over 1.5 s we expect O(750) ticks, plenty above
+        # the >100-received bar the older test asserts.
+        pub_node.create_timer(1 / 500.0, tick, mode="sync")
+
+        sub_thread = threading.Thread(
+            target=lambda: sub_node.spin(timeout=2.0),
+            name="sub-spin",
+        )
+        sub_thread.start()
+
+        pub_node.spin(timeout=1.5)
+        sub_thread.join(timeout=2.0)
+
+        assert not sub_thread.is_alive()
+        assert len(received) > 100, f"only got {len(received)} messages"
+    finally:
+        sub_node.close_sync()
+        pub_node.close_sync()
+
+
 def test_node_spin_rejects_async_work(discovery_daemon, discovery_address):
     """spin() must refuse if the node has async timers/subscribers."""
     from cortex.core.node import Node

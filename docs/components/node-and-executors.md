@@ -104,11 +104,22 @@ flowchart TD
 ## Timer usage
 
 ```python
-node.create_timer(1.0 / 30, self.publish_frame)   # 30 Hz
-node.create_timer(1.0, self.log_stats)            # 1 Hz
+node.create_timer(1.0 / 30, self.publish_frame)   # 30 Hz async (default)
+node.create_timer(1.0, self.log_stats)            # 1 Hz async
 ```
 
 Plain async functions, no decorator. They share the event loop with subscriber callbacks — same head-of-line caveat.
+
+### Sync timers for control loops
+
+`mode='sync'` spawns a dedicated OS thread running [`SyncRateExecutor`][cortex.core.executor.SyncRateExecutor]. The callback is a plain function — no `async`/`await`, no event loop tax.
+
+```python
+def control_tick():
+    pub.publish(WheelCommand(...))
+
+node.create_timer(1.0 / 1000, control_tick, mode="sync")  # 1 kHz
+```
 
 ## Shared ZMQ context
 

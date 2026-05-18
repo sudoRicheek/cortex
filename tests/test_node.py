@@ -4,6 +4,7 @@ Tests for Node class.
 
 import asyncio
 import contextlib
+import threading
 import time
 from dataclasses import dataclass
 
@@ -247,3 +248,102 @@ class TestNodeLifecycle:
 
         # After exiting, node should be closed
         # (hard to verify, but at least no exceptions)
+
+
+class TestNodeSyncTimer:
+    """Tests for ``create_timer(mode='sync')``."""
+
+    def test_sync_timer_fires(self, discovery_daemon, discovery_address):
+        """A sync timer registered on a plain (non-async) node should fire."""
+        fired: list[float] = []
+
+        def tick() -> None:
+            fired.append(time.perf_counter())
+
+        with Node("sync_timer", discovery_address=discovery_address) as node:
+            node.create_timer(0.05, tick, mode="sync")  # 20 Hz
+
+            # Run spin on a background thread so we can drive stop from here.
+            spin_thread = threading.Thread(target=node.spin, kwargs={"timeout": 0.5})
+            spin_thread.start()
+            spin_thread.join(timeout=2.0)
+
+        assert spin_thread.is_alive() is False
+        # 20 Hz × ~0.5 s = ~10 fires; loose bounds for CI jitter.
+        assert 5 <= len(fired) <= 15
+
+    def test_sync_timer_rejects_coroutine(self, discovery_address):
+        """A sync timer cannot accept ``async def`` callbacks."""
+        node = Node("reject_async", discovery_address=discovery_address)
+
+        async def acallback() -> None:
+            pass
+
+        try:
+            with pytest.raises(TypeError):
+                node.create_timer(0.1, acallback, mode="sync")
+        finally:
+            node.close_sync()
+
+    def test_async_timer_rejects_plain_callable(self, discovery_address):
+        """The async timer path now requires a coroutine function."""
+        node = Node("reject_sync", discovery_address=discovery_address)
+
+        def cb() -> None:
+            pass
+
+        try:
+            with pytest.raises(TypeError):
+                node.create_timer(0.1, cb)  # mode='async' is default
+        finally:
+            node.close_sync()
+
+    @pytest.mark.asyncio
+    async def test_sync_timer_runs_inside_async_run(
+        self, discovery_daemon, discovery_address
+    ):
+        """Sync timers must also fire when the node is driven by ``run()``."""
+        async_fired = 0
+        sync_fired = 0
+
+        async def atick() -> None:
+            nonlocal async_fired
+            async_fired += 1
+
+        def stick() -> None:
+            nonlocal sync_fired
+            sync_fired += 1
+
+        node = Node("mixed_timers", discovery_address=discovery_address)
+        node.create_timer(0.05, atick)  # 20 Hz async
+        node.create_timer(0.05, stick, mode="sync")  # 20 Hz sync
+
+        run_task = asyncio.create_task(node.run())
+        await asyncio.sleep(0.35)
+        run_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await run_task
+
+        await node.close()
+
+        assert async_fired >= 2
+        assert sync_fired >= 2
+
+    def test_sync_timer_thread_joins_on_close(
+        self, discovery_daemon, discovery_address
+    ):
+        """``close_sync`` must join the timer thread within its 2s budget."""
+
+        def tick() -> None:
+            pass
+
+        node = Node("join_test", discovery_address=discovery_address)
+        node.create_timer(0.01, tick, mode="sync")
+
+        spin_thread = threading.Thread(target=node.spin, kwargs={"timeout": 0.2})
+        spin_thread.start()
+        spin_thread.join(timeout=2.0)
+        assert not spin_thread.is_alive()
+
+        # close_sync joins all spawned threads; if it returns we're good.
+        node.close_sync()
